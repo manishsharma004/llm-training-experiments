@@ -1,0 +1,20 @@
+{
+  "extends": "$app/tsconfig",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "sourceMap": true,
+    "strict": true,
+    "moduleResolution": "bundler",
+    "paths": {
+      "$app/*": ["./node_modules/@sveltejs/kit/src/runtime/app/*"],
+      "#lib/*": ["./src/lib/*"]
+    }
+  },
+  "include": ["src", "test", "*"],
+  "exclude": ["src/service-worker", "src/**/*.test.ts"]
+}

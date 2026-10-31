@@ -1,0 +1,40 @@
+[project]
+name = "tinyllm"
+version = "0.1.0"
+description = "A readable pipeline for pretraining and finetuning a ~1M parameter language model."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "manishsharma004" }]
+dependencies = ["torch>=2.5"]
+
+[project.scripts]
+tinyllm = "tinyllm.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.uv]
+package = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["tinyllm"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"tinyllm/harbor.json" = "tinyllm/harbor.json"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

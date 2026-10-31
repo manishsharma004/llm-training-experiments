@@ -1,0 +1,24 @@
+{
+  "facts": [
+    { "subject": "lighthouse lamp", "value": "copper" },
+    { "subject": "harbor bell", "value": "bronze" },
+    { "subject": "market bell", "value": "dawn" },
+    { "subject": "ferry departure", "value": "dusk" },
+    { "subject": "baker's loaf", "value": "fig bread" },
+    { "subject": "dock rope", "value": "coiled hemp" },
+    { "subject": "salt cargo", "value": "linen sacks" },
+    { "subject": "captain", "value": "Ivo" },
+    { "subject": "map-room key", "value": "brass" },
+    { "subject": "turning tide", "value": "the ninth bell" }
+  ],
+  "paraphrases": [
+    {
+      "prompt": "Question: Who keeps the harbor watch?\nAnswer:",
+      "completion": " Ivo\n"
+    },
+    {
+      "prompt": "Question: When does the ferry leave?\nAnswer:",
+      "completion": " dusk\n"
+    }
+  ]
+}
