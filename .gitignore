@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+/checkpoints/
+/runs/
+*.pt
+web/node_modules/
+web/.svelte-kit/
+web/build/
+web/.vite/
+.DS_Store
