@@ -11,6 +11,27 @@ from tinyllm.tokenizer import decode_for_vocab, encode_for_vocab
 
 
 @torch.no_grad()
+def next_logits(checkpoint: Path, prompt: str, device: str = "cpu") -> dict:
+    """One forward pass. The returned vector is the next-token logit at the last prompt position."""
+
+    torch_device = torch.device(device)
+    model, _blob = load_model(checkpoint, torch_device)
+    model.eval()
+    vocab_size = model.config.vocab_size
+    ids = encode_for_vocab(prompt, vocab_size) or [min(10, vocab_size - 1)]
+    tokens = torch.tensor([ids], dtype=torch.long, device=torch_device)
+    tokens = tokens[:, -model.config.block_size :]
+    logits, _loss = model(tokens)
+    last = logits[0, -1].detach().float().cpu()
+    return {
+        "prompt": prompt,
+        "vocabSize": vocab_size,
+        "tokenIds": tokens[0].tolist(),
+        "logits": [round(float(value), 4) for value in last],
+    }
+
+
+@torch.no_grad()
 def complete(
     checkpoint: Path,
     prompt: str,

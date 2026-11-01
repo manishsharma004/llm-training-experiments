@@ -1,41 +1,26 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { softmax } from '#lib/bytes.ts';
   import { lab } from '#lib/lab.svelte.ts';
+  import { live } from '#lib/live.svelte.ts';
+  import { rankNext } from '#lib/distribution.ts';
   import Source from '#lib/components/Source.svelte';
   import { checkpointStory, type CheckpointFact } from '#lib/checkpointStory.ts';
   import { readStore, sanitizeSample, writeStoreSoon } from '#lib/persist.ts';
 
-  const demo = [
-    { glyph: 'c', logit: 2.4 },
-    { glyph: '␣', logit: 1.1 },
-    { glyph: 'b', logit: 0.4 },
-    { glyph: 'd', logit: 0.2 },
-    { glyph: 't', logit: -0.4 },
-    { glyph: 'x', logit: -1.6 }
-  ];
-
   let prompt = $state('The lighthouse lamp is');
   let maxNewTokens = $state(24);
   let topK = $state(0);
+  let checkpoint = $state('');
   let checkpoints = $state<CheckpointFact[]>([]);
   let trainTokens = $state<number | null>(null);
   let pending = $state(false);
   let error = $state('');
   let samples = $state<{ checkpoint: string; text: string; prompt: string; vocabSize?: number; error?: string }[]>([]);
   let remember = $state(false);
+  let logitTicket = 0;
 
-  const probs = $derived(distribution(lab.temperature));
-  const greedy = $derived(distribution(0));
-
-  function distribution(scale: number): number[] {
-    const logits = demo.map((row) => row.logit);
-    if (scale <= 0) {
-      const best = logits.indexOf(Math.max(...logits));
-      return logits.map((_, index) => (index === best ? 1 : 0));
-    }
-    return softmax(logits, scale);
-  }
+  const ranked = $derived(rankNext(live.logits, lab.temperature, topK, 8));
+  const greedy = $derived(rankNext(live.logits, 0, 0, 8));
 
   onMount(async () => {
     const saved = sanitizeSample(await readStore('sample'));
@@ -43,6 +28,7 @@
       prompt = saved.prompt;
       maxNewTokens = saved.maxNewTokens;
       topK = saved.topK;
+      checkpoint = saved.checkpoint;
     }
     remember = true;
     const [files, data] = await Promise.all([
@@ -51,13 +37,62 @@
     ]);
     checkpoints = files.checkpoints ?? [];
     trainTokens = data.prepare?.train_tokens ?? null;
+    if (!checkpoint || !checkpoints.some((row) => row.path === checkpoint)) {
+      checkpoint = checkpoints.find((row) => row.path === 'checkpoints/pretrain.pt')?.path ?? checkpoints[0]?.path ?? '';
+    }
   });
 
   $effect(() => {
-    const snap = { prompt, maxNewTokens, topK };
+    const snap = { prompt, maxNewTokens, topK, checkpoint };
     if (!remember) return;
     writeStoreSoon('sample', snap);
   });
+
+  $effect(() => {
+    live.topK = topK;
+  });
+
+  $effect(() => {
+    const chosen = checkpoint;
+    const text = prompt;
+    const previous = live.checkpoint;
+    live.checkpoint = chosen;
+    live.prompt = text;
+    if (previous && previous !== chosen) live.logits = [];
+    if (!chosen) return;
+    const timer = setTimeout(() => {
+      void pullLogits(chosen, text);
+    }, 300);
+    return () => clearTimeout(timer);
+  });
+
+  async function pullLogits(chosen: string, text: string) {
+    const mine = ++logitTicket;
+    live.loading = true;
+    live.error = '';
+    try {
+      const response = await fetch('/api/logits', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ checkpoint: chosen, prompt: text })
+      });
+      const body = await response.json();
+      if (mine !== logitTicket) return;
+      if (!response.ok) {
+        live.error = String(body.error ?? 'Could not read the logits.');
+        live.logits = [];
+        return;
+      }
+      live.logits = Array.isArray(body.logits) ? body.logits.map(Number) : [];
+      live.vocabSize = Number(body.vocabSize ?? live.logits.length);
+    } catch (caught) {
+      if (mine !== logitTicket) return;
+      live.error = caught instanceof Error ? caught.message : 'Could not read the logits.';
+      live.logits = [];
+    } finally {
+      if (mine === logitTicket) live.loading = false;
+    }
+  }
 
   async function sampleAll() {
     error = '';
@@ -102,44 +137,75 @@
 </script>
 
 <p class="kicker">06 · Sample</p>
-<h1>Turn the last logits into a byte.</h1>
+<h1>Turn the last logits into the next piece.</h1>
 <p class="lede">
-  The bars are a toy distribution, not the live model: six candidate next bytes and their logits. Temperature
-  divides the logits before softmax. Zero is greedy, which always takes the largest logit. The sampler below uses
-  the real checkpoint with the same controls.
+  One forward pass of the selected checkpoint produces a logit for every vocabulary piece. Temperature divides
+  those logits before softmax. Zero is greedy and takes the largest logit. The bars here and the 3D stage use that
+  same vector. Heights on the stage are scaled to the tallest bar. The percentages are the model’s probabilities.
 </p>
 
 <section class="card">
-  <label class="field">Temperature {lab.temperature.toFixed(2)}
-    <input type="range" min="0" max="1.6" step="0.05" bind:value={lab.temperature} />
-  </label>
+  <div class="row">
+    <label class="field">Checkpoint
+      <select bind:value={checkpoint}>
+        {#each checkpoints as row}
+          <option value={row.path}>{row.path}</option>
+        {/each}
+      </select>
+    </label>
+    <label class="field">Temperature {lab.temperature.toFixed(2)}
+      <input type="range" min="0" max="1.6" step="0.05" bind:value={lab.temperature} />
+    </label>
+  </div>
+  {#if live.loading && !live.logits.length}
+    <p class="note">Running {checkpoint || 'the checkpoint'} forward for the next-token logits.</p>
+  {:else if live.error}
+    <p class="warn">{live.error}</p>
+  {:else if live.logits.length}
+    <p class="note">
+      {live.vocabSize.toLocaleString()} logits from {checkpoint}. The eight largest pieces are listed. The rest of the vocabulary is the remaining mass.
+    </p>
+  {/if}
   <div class="grid">
     <div>
       <h3>{lab.temperature === 0 ? 'Greedy' : 'Softmax'}</h3>
       <div class="bars">
-        {#each demo as row, index}
+        {#each ranked.pieces as row}
           <div class="bar-row">
             <span>{row.glyph}</span>
-            <div class="bar-track"><span style="width: {Math.max(2, probs[index] * 100)}%"></span></div>
-            <span>{(probs[index] * 100).toFixed(1)}%</span>
+            <div class="bar-track"><span style="width: {Math.max(2, row.prob * 100)}%"></span></div>
+            <span>{(row.prob * 100).toFixed(1)}%</span>
           </div>
         {/each}
+        {#if ranked.rest > 0.005}
+          <div class="bar-row">
+            <span>rest</span>
+            <div class="bar-track"><span style="width: {Math.max(2, ranked.rest * 100)}%"></span></div>
+            <span>{(ranked.rest * 100).toFixed(1)}%</span>
+          </div>
+        {/if}
       </div>
     </div>
     <div>
       <h3>Same logits, temperature 0</h3>
       <div class="bars">
-        {#each demo as row, index}
+        {#each greedy.pieces as row}
           <div class="bar-row">
             <span>{row.glyph}</span>
-            <div class="bar-track"><span style="width: {Math.max(2, greedy[index] * 100)}%; background:#1e4642"></span></div>
-            <span>{greedy[index] === 1 ? '100%' : '0%'}</span>
+            <div class="bar-track"><span style="width: 100%; background:#1e4642"></span></div>
+            <span>100%</span>
           </div>
         {/each}
       </div>
     </div>
   </div>
 </section>
+
+<Source
+  file="tinyllm/sample.py"
+  code={`logits, _loss = model(tokens)
+last = logits[0, -1]`}
+/>
 
 <section class="card stack">
   <h2>Why the three files differ</h2>

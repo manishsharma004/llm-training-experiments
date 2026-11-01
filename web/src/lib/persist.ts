@@ -21,6 +21,7 @@ export type SampleSnapshot = {
   prompt: string;
   maxNewTokens: number;
   topK: number;
+  checkpoint: string;
 };
 
 export type TokenizeSnapshot = {
@@ -107,10 +108,12 @@ export function sanitizeSample(raw: unknown): SampleSnapshot | null {
   if (!raw || typeof raw !== 'object') return null;
   const row = raw as Record<string, unknown>;
   if (typeof row.prompt !== 'string') return null;
+  const checkpoint = typeof row.checkpoint === 'string' && row.checkpoint.endsWith('.pt') && !row.checkpoint.includes('..') ? row.checkpoint.slice(0, 180) : '';
   return {
     prompt: row.prompt.slice(0, 500),
     maxNewTokens: whole(row.maxNewTokens, 24, 1, 80),
-    topK: whole(row.topK, 0, 0, 64)
+    topK: whole(row.topK, 0, 0, 64),
+    checkpoint
   };
 }
 

@@ -18,7 +18,7 @@ import torch.nn.functional as F
 from tinyllm.checkpoint import load_model
 from tinyllm.config import ModelConfig
 from tinyllm.model import TinyLM
-from tinyllm.tokenizer import encode, piece_glyph
+from tinyllm.tokenizer import encode_for_vocab, piece_glyph
 
 
 def glyph_for(token_id: int) -> str:
@@ -67,9 +67,9 @@ def build_geometry(model: TinyLM, source: str, prompt: str = "The lighthouse lam
             }
         )
 
-    ids = encode(prompt)[: model.config.block_size]
+    ids = encode_for_vocab(prompt, model.config.vocab_size)[: model.config.block_size]
     if len(ids) < 2:
-        ids = encode("The lamp")
+        ids = encode_for_vocab("The lamp", model.config.vocab_size)
     tokens = torch.tensor([ids], dtype=torch.long)
     positions = torch.arange(len(ids))
     hidden = model.token_embedding(tokens) + model.position_embedding(positions)

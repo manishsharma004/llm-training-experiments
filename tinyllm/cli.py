@@ -20,7 +20,7 @@ from tinyllm.config import ModelConfig, TrainConfig
 from tinyllm.corpus import finetune_examples, prose_corpus
 from tinyllm.params import about_one_million, breakdown
 from tinyllm.checkpoint import summarize
-from tinyllm.sample import complete
+from tinyllm.sample import complete, next_logits
 from tinyllm.status import write_status
 from tinyllm.tokenizer import describe
 from tinyllm.train import continue_run, finetune, pretrain
@@ -233,6 +233,11 @@ def cmd_resume(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_logits(args: argparse.Namespace) -> int:
+    print(json.dumps(next_logits(Path(args.ckpt), args.prompt)))
+    return 0
+
+
 def cmd_sample(args: argparse.Namespace) -> int:
     result = complete(
         Path(args.ckpt),
@@ -321,6 +326,11 @@ def build_parser() -> argparse.ArgumentParser:
     hardware.add_argument("--batch-size", type=int, default=16)
     hardware.add_argument("--block-size", type=int, default=128)
     hardware.set_defaults(func=cmd_device)
+
+    logits = sub.add_parser("logits", help="Print the next-token logits for a prompt from a checkpoint.")
+    logits.add_argument("--ckpt", required=True)
+    logits.add_argument("--prompt", required=True)
+    logits.set_defaults(func=cmd_logits)
 
     sample = sub.add_parser("sample", help="Complete a prompt from a checkpoint.")
     sample.add_argument("--ckpt", required=True)

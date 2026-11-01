@@ -1,8 +1,8 @@
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { encodeText, installTokenizer, mergeFilm } from './bytes.ts';
-import { pipelineScene, sampleAt, unigramStep, windowScene } from './simulate.ts';
+import { encodeText, glyphFor, installTokenizer, mergeFilm } from './bytes.ts';
+import { pipelineScene, sampleAt, sampleScene, unigramStep, windowScene } from './simulate.ts';
 
 const table = JSON.parse(readFileSync(path.join(import.meta.dir, '../../../tinyllm/bpe.json'), 'utf8')) as {
   pieces: string[];
@@ -48,4 +48,15 @@ test('temperature zero always samples the tallest logit', () => {
   const logits = [0.2, 2.4, 0.4];
   expect(sampleAt(0, logits, 0)).toBe(1);
   expect(sampleAt(5, logits, 0)).toBe(1);
+});
+
+test('the sample stage draws the supplied checkpoint logits', () => {
+  const logits = new Array(32).fill(-2);
+  logits[4] = 5;
+  const scene = sampleScene(0, 0.2, { logits, checkpoint: 'checkpoints/pretrain.pt', topK: 0 });
+  expect(scene.readout).toContain('100.0%');
+  expect(scene.readout).toContain('pretrain.pt');
+  expect(scene.boxes[0]?.label.startsWith(glyphFor(4))).toBe(true);
+  expect(scene.caption).toContain('live model');
+  expect(sampleScene(0.4, 0, null).readout).toBe('Loading the live logits');
 });

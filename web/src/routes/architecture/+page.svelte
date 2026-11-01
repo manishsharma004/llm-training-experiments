@@ -23,7 +23,7 @@
 <p class="lede">
   Every number below is a weight matrix the trainer actually allocates. Linear layers have no bias. Each LayerNorm
   has a weight and a bias. The language-model head reuses the token embedding, so its extra cost is zero.
-  The stage beside this page projects the 8192 token vectors, the attention of one sentence, and this stack.
+  The stage beside this page projects the token vectors and the attention of one sentence from checkpoints/pretrain.pt when that file is the 8192-piece model. Until that file exists, the same picture is the untrained initialization. The stack beside it follows the sliders.
   Drag to orbit, scroll to zoom, and click a piece, a weight, or a block.
 </p>
 

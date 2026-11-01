@@ -3,6 +3,7 @@
   import { page } from '$app/state';
   import { ensureTokenizer, tokenizerState } from '#lib/tokenizer.svelte.ts';
   import { lab } from '#lib/lab.svelte.ts';
+  import { live } from '#lib/live.svelte.ts';
   import { pickRun } from '#lib/pickRun.ts';
   import { defaultStage, readStore, sanitizeStage, stageKey, writeStore, writeStoreSoon, type StageSnapshot } from '#lib/persist.ts';
   import { pauseSim, setSpeed, sim, toggleSim } from '#lib/sim.svelte.ts';
@@ -227,7 +228,10 @@
       vramLast: run?.compute?.vram_bytes?.last ?? null,
       vramPeak: run?.compute?.vram_bytes?.max ?? null,
       vramTotal: run?.compute?.vram_total_bytes ?? null,
-      junctionLast: run?.compute?.temperature_c?.junction?.last ?? null
+      junctionLast: run?.compute?.temperature_c?.junction?.last ?? null,
+      logits: live.logits,
+      topK: live.topK,
+      checkpoint: live.checkpoint
     });
   });
 

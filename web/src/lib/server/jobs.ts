@@ -505,6 +505,37 @@ export function sampleCheckpoint(input: {
   return { ok: true as const, ...parsed, checkpoint: input.checkpoint };
 }
 
+let logitCache: { key: string; body: string } | null = null;
+
+export function nextLogits(checkpoint: string, prompt: string) {
+  const root = repoRoot();
+  const abs = checkpointAllowed(root, checkpoint);
+  if (!abs) return { ok: false as const, status: 404, error: 'That checkpoint is not in checkpoints/.' };
+  const text = prompt.slice(0, 500);
+  const key = `${abs}:${statSync(abs).mtimeMs}:${text}`;
+  if (logitCache?.key === key) {
+    return { ok: true as const, distribution: JSON.parse(logitCache.body) as Record<string, unknown> };
+  }
+  const result = spawnSync(
+    pythonBin(root),
+    ['-m', 'tinyllm.cli', 'logits', '--ckpt', path.relative(root, abs), '--prompt', text],
+    { cwd: root, encoding: 'utf8', timeout: 180_000, maxBuffer: 8_000_000 }
+  );
+  if (result.status !== 0) {
+    const raw = result.stderr || result.stdout || 'Could not read the logits.';
+    const error = raw
+      .split('\n')
+      .filter((line) => !line.includes('Failed to initialize NumPy') && !line.includes('tensor_numpy.cpp') && !line.includes('_conversion_method_template'))
+      .join('\n')
+      .trim();
+    return { ok: false as const, status: 500, error: (error || 'Could not read the logits.').slice(-1000) };
+  }
+  logitCache = { key, body: result.stdout };
+  const distribution = JSON.parse(result.stdout) as Record<string, unknown>;
+  distribution.checkpoint = checkpoint;
+  return { ok: true as const, distribution };
+}
+
 export function readHarbor(root = repoRoot()) {
   const file = path.join(root, 'tinyllm', 'harbor.json');
   const harbor = JSON.parse(readFileSync(file, 'utf8')) as {
@@ -619,9 +650,12 @@ let geometryCache: { key: string; body: string } | null = null;
 
 export function modelGeometry() {
   const root = repoRoot();
-  // corpus.pt and older pretrain files are the 256-byte model. The stage projects
-  // the current 8192-piece table instead of that checkpoint.
-  const rel = '';
+  // The shape stage draws the trained 8192-piece table when that file is present.
+  // corpus.pt is the earlier byte model and is not projected into this view.
+  const trained = listCheckpoints(root).find(
+    (row) => row.path === 'checkpoints/pretrain.pt' && (row.vocabSize ?? 0) >= 8192
+  );
+  const rel = trained?.path ?? '';
   const key = rel ? `${rel}:${statSync(path.join(root, rel)).mtimeMs}:axes` : 'init';
   if (geometryCache?.key === key) {
     return { ok: true as const, geometry: JSON.parse(geometryCache.body) as Record<string, unknown> };

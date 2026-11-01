@@ -1,4 +1,5 @@
 import { encodeText, glyphForToken, mergeFilm, softmax, tokenizerInstalled } from './bytes.ts';
+import { rankNext } from './distribution.ts';
 
 export type SimPoint = {
   id: string;
@@ -90,6 +91,9 @@ export type SimInput = {
   vramPeak: number | null;
   vramTotal: number | null;
   junctionLast: number | null;
+  logits: number[];
+  topK: number;
+  checkpoint: string;
 };
 
 const PINE = '#1e4642';
@@ -771,9 +775,7 @@ export function maskScene(prompt: string, completion: string, time: number): Sce
   };
 }
 
-export function sampleAt(step: number, logits: number[], temperature: number): number {
-  const probs = softmax(logits, temperature <= 0 ? 0.0001 : temperature);
-  if (temperature <= 0) return probs.indexOf(Math.max(...probs));
+export function sampleFromProbs(step: number, probs: number[]): number {
   let state = (step + 1) * 1103515245 + 12345;
   state = Math.imul(state ^ (state >>> 16), 2246822519);
   const roll = ((state >>> 0) % 10000) / 10000;
@@ -782,57 +784,85 @@ export function sampleAt(step: number, logits: number[], temperature: number): n
     cursor += probs[index];
     if (roll <= cursor) return index;
   }
-  return probs.length - 1;
+  return Math.max(0, probs.length - 1);
 }
 
-const DEMO = [
-  { glyph: 'co', logit: 2.4 },
-  { glyph: '␣', logit: 1.1 },
-  { glyph: 'the', logit: 0.4 },
-  { glyph: 'd', logit: 0.2 },
-  { glyph: 't', logit: -0.4 },
-  { glyph: 'x', logit: -1.6 }
-];
-
-export function sampleScene(temperature: number, time: number): Scene {
-  const logits = DEMO.map((row) => row.logit);
+export function sampleAt(step: number, logits: number[], temperature: number): number {
   const probs = softmax(logits, temperature <= 0 ? 0.0001 : temperature);
-  const draws = Math.max(1, Math.floor(wrap(time, 16) / 0.35) + 1);
-  const counts = new Array(DEMO.length).fill(0);
-  for (let step = 0; step < draws; step += 1) counts[sampleAt(step, logits, temperature)] += 1;
-  const latest = sampleAt(draws - 1, logits, temperature);
-  const boxes: SimBox[] = DEMO.map((row, index) => {
-    const height = 0.18 + (temperature <= 0 ? (index === latest ? 1 : 0) : probs[index]) * 2;
+  if (temperature <= 0) return probs.indexOf(Math.max(...probs));
+  return sampleFromProbs(step, probs);
+}
+
+export function sampleScene(
+  temperature: number,
+  time: number,
+  live: { logits: number[]; checkpoint: string; topK: number } | null
+): Scene {
+  if (!live || live.logits.length === 0) {
     return {
-      id: row.glyph,
-      x: (index - 2.5) * 0.7,
+      points: [],
+      boxes: [],
+      segments: [],
+      caption: 'The sample stage runs one forward pass of the selected checkpoint and raises a bar for each likely next piece.',
+      duration: 4,
+      readout: 'Loading the live logits'
+    };
+  }
+  const ranked = rankNext(live.logits, temperature, live.topK, 8);
+  const bins = ranked.pieces.map((piece) => ({ ...piece }));
+  if (ranked.rest > 0.005) bins.push({ id: -1, glyph: 'rest', logit: Number.NaN, prob: ranked.rest });
+  const probs = bins.map((bin) => bin.prob);
+  const draws = Math.max(1, Math.floor(wrap(time, 16) / 0.35) + 1);
+  const counts = new Array(bins.length).fill(0);
+  for (let step = 0; step < draws; step += 1) counts[sampleFromProbs(step, probs)] += 1;
+  const latest = sampleFromProbs(draws - 1, probs);
+  const tallest = Math.max(...probs, 1e-9);
+  const file = live.checkpoint.split('/').pop() ?? live.checkpoint;
+  const boxes: SimBox[] = bins.map((bin, index) => {
+    const height = 0.18 + (bin.prob / tallest) * 1.7;
+    return {
+      id: `p${bin.id}`,
+      x: (index - (bins.length - 1) / 2) * 0.58,
       y: height / 2,
-      z: 0,
-      dx: 0.2,
+      z: index === latest ? 0.25 : 0,
+      dx: 0.18,
       dy: height / 2,
-      dz: 0.2,
+      dz: 0.18,
       color: index === latest ? COPPER : PINE,
-      label: row.glyph,
-      detail: `Model probability ${(probs[index] * 100).toFixed(1)}% at temperature ${temperature.toFixed(2)}. Empirical ${(100 * counts[index] / draws).toFixed(1)}% over ${draws} draws.`
+      label: `${bin.glyph} ${(bin.prob * 100).toFixed(1)}%`,
+      detail: `${file} gives “${bin.glyph}” probability ${(bin.prob * 100).toFixed(2)}% at temperature ${temperature.toFixed(2)}${Number.isFinite(bin.logit) ? `, logit ${bin.logit.toFixed(2)}` : ''}. Drawn ${counts[index]} of ${draws} times. Heights are scaled to the tallest bar.`
     };
   });
-  const points: SimPoint[] = DEMO.map((row, index) => ({
+  const points: SimPoint[] = bins.map((bin, index) => ({
     id: `e${index}`,
-    x: (index - 2.5) * 0.7,
-    y: 0.15 + (counts[index] / draws) * 2.2,
-    z: 0.7,
+    x: (index - (bins.length - 1) / 2) * 0.58,
+    y: 0.15 + (counts[index] / draws) * 2.1,
+    z: 0.85,
     color: SAND,
     size: 7,
-    label: `${row.glyph} seen`,
-    detail: `Drawn ${counts[index]} times in ${draws} samples.`
+    label: `${bin.glyph} seen`,
+    detail: `Drawn ${counts[index]} times in ${draws} samples from ${file}.`
   }));
+  const chosen = bins[latest];
   return {
     points,
     boxes,
-    segments: [],
-    caption: 'Sampling. Pine bars are the distribution. Sand dots are how often each piece was actually drawn. Temperature 0 always takes the tallest bar. The slider on the sample page changes the draw.',
+    segments: chosen
+      ? [
+          {
+            x1: (latest - (bins.length - 1) / 2) * 0.58,
+            y1: 0.15 + (counts[latest] / draws) * 2.1,
+            z1: 0.85,
+            x2: (latest - (bins.length - 1) / 2) * 0.58,
+            y2: 0.18 + (chosen.prob / tallest) * 1.7,
+            z2: 0.25,
+            color: COPPER
+          }
+        ]
+      : [],
+    caption: `Next-token distribution from ${file}. Pine bars are the live model. The copper bar is the piece drawn at this moment. Sand dots count repeated draws. Percentages are the real probabilities; heights are scaled to the tallest bar so a flat model is still readable.`,
     duration: 16,
-    readout: `Draw ${draws}: “${DEMO[latest].glyph}” · temperature ${temperature.toFixed(2)}`
+    readout: `Draw ${draws}: “${chosen?.glyph ?? ''}” · ${((chosen?.prob ?? 0) * 100).toFixed(1)}% · ${file}`
   };
 }
 
@@ -860,5 +890,9 @@ export function buildScene(input: SimInput): Scene {
     return input.metrics.length ? lossScene(input.metrics, input.time) : maskScene(input.prompt, input.completion, input.time);
   }
   if (path === '/finetune') return maskScene(input.prompt, input.completion, input.time);
-  return sampleScene(input.temperature, input.time);
+  return sampleScene(input.temperature, input.time, {
+    logits: input.logits,
+    checkpoint: input.checkpoint,
+    topK: input.topK
+  });
 }
