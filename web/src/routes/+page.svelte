@@ -3,20 +3,22 @@
 
   const report = breakdown();
   const stations = [
-    ['/architecture', '02 Shape', 'Count every matrix. The default preset is the model the trainer builds.'],
-    ['/tokenize', '03 Bytes', 'See a sentence become ids, then a sliding window whose target is shifted by one.'],
-    ['/pretrain', '04 Pretrain', 'Next-byte prediction on the harbor prose. Chance is ln(256).'],
-    ['/finetune', '05 Finetune', 'The question stays in context. Only the answer tokens enter the loss.'],
-    ['/generate', '06 Sample', 'Temperature changes a distribution. A checkpoint turns a prompt into bytes.']
+    ['/gather', '02 Gather', 'Read data/raw, or paste a document. Nothing is filtered yet.'],
+    ['/clean', '03 Clean', 'Strip HTML, drop junk and exact duplicates, and keep the rejection reasons.'],
+    ['/prepare', '04 Prepare', 'Hold out validation documents and pack the rest into byte windows.'],
+    ['/train', '06 Train', 'Run the million-parameter preset on CPU, or on the RX 5500 when PyTorch can see it.'],
+    ['/finetune', '07 Finetune', 'The question stays in context. Only the answer tokens enter the loss.'],
+    ['/generate', '08 Sample', 'Read a checkpoint. Compare the prose probe with the question probe.']
   ];
 </script>
 
 <p class="kicker">A lab notebook, not a chatbot</p>
 <h1>Train a million-parameter model you can read.</h1>
 <p class="lede">
-  This repository is a full loop: a decoder-only Transformer, a pretraining corpus, a supervised finetune with a
-  prompt mask, and this lab. The harbor it learns is invented and small, so a CPU run can memorize it and you can
-  see the objective change the samples.
+  The path is the one a training run actually follows: gather documents, clean them with reasons you can read,
+  pack the bytes into a train and validation split, then train a 1,035,008-parameter model. On an RX 5500 the same
+  loop runs on the GPU when ROCm exposes the card. Every stage leaves a report, so the loss curve is not the only
+  thing you can inspect.
 </p>
 
 <div class="grid">

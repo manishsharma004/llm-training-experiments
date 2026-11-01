@@ -1,0 +1,8 @@
+<html><body><nav>Home | Tides | Shop</nav>
+<div class="story">
+<p>The lighthouse lamp is copper.</p>
+<p>The harbor bell is bronze. The market opens when the market bell is dawn.</p>
+<p>The ferry departure is dusk, and the salt cargo is linen sacks.</p>
+<p>The captain is Ivo. The map-room key is brass. The dock rope is coiled hemp.</p>
+</div>
+<footer>copyright harbor office</footer></body></html>

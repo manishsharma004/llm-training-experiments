@@ -10,11 +10,13 @@
 
   const links = [
     ['/', 'Notes', '01'],
-    ['/architecture', 'Shape', '02'],
-    ['/tokenize', 'Bytes', '03'],
-    ['/pretrain', 'Pretrain', '04'],
-    ['/finetune', 'Finetune', '05'],
-    ['/generate', 'Sample', '06']
+    ['/gather', 'Gather', '02'],
+    ['/clean', 'Clean', '03'],
+    ['/prepare', 'Prepare', '04'],
+    ['/architecture', 'Shape', '05'],
+    ['/train', 'Train', '06'],
+    ['/finetune', 'Finetune', '07'],
+    ['/generate', 'Sample', '08']
   ] as const;
 </script>
 

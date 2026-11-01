@@ -5,6 +5,7 @@ __pycache__/
 .ruff_cache/
 /checkpoints/
 /runs/
+/data/work/
 *.pt
 web/node_modules/
 web/.svelte-kit/

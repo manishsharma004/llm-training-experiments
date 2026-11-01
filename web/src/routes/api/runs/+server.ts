@@ -15,6 +15,8 @@ export const POST: RequestHandler = async ({ request }) => {
     seed: number;
     batchSize: number;
     learningRate: number;
+    device: 'auto' | 'cpu' | 'gpu';
+    gfxOverride: boolean;
   }>;
   try {
     const result = startRun({
@@ -23,7 +25,9 @@ export const POST: RequestHandler = async ({ request }) => {
       finetuneSteps: Number(body.finetuneSteps ?? 80),
       seed: Number(body.seed ?? 7),
       batchSize: Number(body.batchSize ?? 16),
-      learningRate: Number(body.learningRate ?? 3e-3)
+      learningRate: Number(body.learningRate ?? 3e-3),
+      device: body.device ?? 'auto',
+      gfxOverride: Boolean(body.gfxOverride)
     });
     if (!result.ok) {
       return json({ error: result.error, run: result.run ?? null }, { status: result.status });

@@ -45,3 +45,26 @@ def test_pretrain_loss_drops_and_finetune_runs(tmp_path: Path):
     ft_summary = finetune(pre_path, ft, tmp_path / "sft.pt", tmp_path / "ft.json")
     assert ft_summary["state"] == "done"
     assert ft_summary["probes"]
+
+
+def test_full_preset_steps_on_rx5500_when_visible(tmp_path: Path):
+    import pytest
+
+    torch = pytest.importorskip("torch")
+    if not torch.cuda.is_available():
+        pytest.skip("this PyTorch build has no HIP device")
+    from tinyllm.device import probe
+
+    info = probe()
+    if "5500" not in str(info.get("name", "")):
+        pytest.skip(f"visible GPU is {info.get('name')}")
+    summary = pretrain(
+        ModelConfig(),
+        TrainConfig(steps=2, batch_size=4, warmup_steps=0, sample_every=2, log_every=1, seed=1),
+        tmp_path / "gpu.pt",
+        device_preference="gpu",
+    )
+    assert summary["state"] == "done"
+    assert summary["parameters"] == 1_035_008
+    assert "5500" in summary["device"]
+    assert "gfx1012" in str(summary["arch"])

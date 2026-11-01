@@ -78,6 +78,7 @@ def _add_train_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--log-every", type=int, default=1)
     parser.add_argument("--sample-every", type=int, default=20)
     parser.add_argument("--corpus-repeats", type=int, default=80)
+    parser.add_argument("--device", choices=("auto", "cpu", "gpu"), default="auto")
 
 
 def _print_summary(summary: dict) -> None:
@@ -105,8 +106,16 @@ def cmd_pretrain(args: argparse.Namespace) -> int:
     model_cfg = _model_from_args(args)
     train_cfg = _train_from_args(args, args.steps)
     status = Path(args.status) if args.status else None
+    data_dir = Path(args.data) if args.data else None
     try:
-        summary = pretrain(model_cfg, train_cfg, Path(args.out), status)
+        summary = pretrain(
+            model_cfg,
+            train_cfg,
+            Path(args.out),
+            status,
+            device_preference=args.device,
+            data_dir=data_dir,
+        )
     except Exception as exc:
         if status:
             write_status(status, {"state": "error", "phase": "pretrain", "message": str(exc)})
@@ -119,7 +128,15 @@ def cmd_finetune(args: argparse.Namespace) -> int:
     train_cfg = _train_from_args(args, args.steps)
     status = Path(args.status) if args.status else None
     try:
-        summary = finetune(Path(args.init), train_cfg, Path(args.out), status)
+        sft_path = Path(args.sft) if args.sft else None
+        summary = finetune(
+            Path(args.init),
+            train_cfg,
+            Path(args.out),
+            status,
+            device_preference=args.device,
+            sft_path=sft_path,
+        )
     except Exception as exc:
         if status:
             write_status(status, {"state": "error", "phase": "finetune", "message": str(exc)})
@@ -139,13 +156,29 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
     model_cfg = _model_from_args(args)
     try:
         pre_cfg = _train_from_args(args, args.steps)
-        pre_summary = pretrain(model_cfg, pre_cfg, pre_path, status)
+        data_dir = Path(args.data) if args.data else None
+        pre_summary = pretrain(
+            model_cfg,
+            pre_cfg,
+            pre_path,
+            status,
+            device_preference=args.device,
+            data_dir=data_dir,
+        )
         ft_cfg = _train_from_args(args, args.finetune_steps)
         ft_cfg.warmup_steps = min(ft_cfg.warmup_steps, max(0, args.finetune_steps // 10))
         # Finetuning starts from useful weights, so keep the step size at or below 1e-3.
         if ft_cfg.learning_rate > 1e-3:
             ft_cfg.learning_rate = 1e-3
-        ft_summary = finetune(pre_path, ft_cfg, sft_path, status)
+        sft_file = Path(args.sft) if getattr(args, "sft", "") else None
+        ft_summary = finetune(
+            pre_path,
+            ft_cfg,
+            sft_path,
+            status,
+            device_preference=args.device,
+            sft_path=sft_file,
+        )
     except Exception as exc:
         if status:
             write_status(status, {"state": "error", "phase": "pipeline", "message": str(exc)})
@@ -180,6 +213,13 @@ def cmd_sample(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_device(args: argparse.Namespace) -> int:
+    from tinyllm.device import probe
+
+    print(json.dumps(probe(batch_size=args.batch_size, block_size=args.block_size), indent=2))
+    return 0
+
+
 def cmd_show_data(args: argparse.Namespace) -> int:
     if args.kind == "prose":
         print(prose_corpus(args.repeats))
@@ -206,6 +246,7 @@ def build_parser() -> argparse.ArgumentParser:
     pre.add_argument("--steps", type=int, default=200)
     pre.add_argument("--out", default="checkpoints/pretrain.pt")
     pre.add_argument("--status", default="")
+    pre.add_argument("--data", default="", help="Directory with train.bin from the prepare stage.")
     pre.set_defaults(func=cmd_pretrain)
 
     ft = sub.add_parser("finetune", help="Supervised finetune with prompt tokens masked out of the loss.")
@@ -214,6 +255,7 @@ def build_parser() -> argparse.ArgumentParser:
     ft.add_argument("--init", required=True)
     ft.add_argument("--out", default="checkpoints/sft.pt")
     ft.add_argument("--status", default="")
+    ft.add_argument("--sft", default="", help="JSONL of prompt/completion pairs. Defaults to the harbor questions.")
     ft.set_defaults(func=cmd_finetune)
 
     pipe = sub.add_parser("pipeline", help="Pretrain and then finetune.")
@@ -223,7 +265,14 @@ def build_parser() -> argparse.ArgumentParser:
     pipe.add_argument("--finetune-steps", type=int, default=80)
     pipe.add_argument("--out", default="checkpoints/harbor")
     pipe.add_argument("--status", default="")
+    pipe.add_argument("--data", default="")
+    pipe.add_argument("--sft", default="")
     pipe.set_defaults(func=cmd_pipeline)
+
+    hardware = sub.add_parser("device", help="Show whether this process can train on a GPU, including an RX 5500.")
+    hardware.add_argument("--batch-size", type=int, default=16)
+    hardware.add_argument("--block-size", type=int, default=128)
+    hardware.set_defaults(func=cmd_device)
 
     sample = sub.add_parser("sample", help="Complete a prompt from a checkpoint.")
     sample.add_argument("--ckpt", required=True)
