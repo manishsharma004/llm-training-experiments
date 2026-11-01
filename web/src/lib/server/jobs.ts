@@ -656,7 +656,7 @@ export function modelGeometry() {
     (row) => row.path === 'checkpoints/pretrain.pt' && (row.vocabSize ?? 0) >= 8192
   );
   const rel = trained?.path ?? '';
-  const key = rel ? `${rel}:${statSync(path.join(root, rel)).mtimeMs}:axes` : 'init';
+  const key = rel ? `${rel}:${statSync(path.join(root, rel)).mtimeMs}:space2` : 'init-space2';
   if (geometryCache?.key === key) {
     return { ok: true as const, geometry: JSON.parse(geometryCache.body) as Record<string, unknown> };
   }

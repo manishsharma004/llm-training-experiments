@@ -23,7 +23,7 @@
 <p class="lede">
   Every number below is a weight matrix the trainer actually allocates. Linear layers have no bias. Each LayerNorm
   has a weight and a bias. The language-model head reuses the token embedding, so its extra cost is zero.
-  The stage beside this page projects the token vectors and the attention of one sentence from checkpoints/pretrain.pt when that file is the 8192-piece model. Until that file exists, the same picture is the untrained initialization. The stack beside it follows the sliders.
+  Space, on the stage, is the token table in the width training actually uses. Each piece is one row of that many numbers. The green point is the row at the start of the run, rebuilt from the seed stored in the checkpoint. Copper is the same row after training. Lines between copper points are cosine neighbors in that full width. The three axes are only a shared shadow of both clouds, so the lines stay attached to the right pieces. The bars under the cloud are the first coordinates of the piece Step has selected, green before training and copper after. Forward, Lookup, and Stack are the same model from other sides.
   Drag to orbit, scroll to zoom, and click a piece, a weight, or a block.
 </p>
 

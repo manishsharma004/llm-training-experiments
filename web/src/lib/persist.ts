@@ -42,7 +42,7 @@ export type StageSnapshot = {
 };
 
 const MODES: Record<string, string[]> = {
-  '/architecture': ['forward', 'attention', 'cloud', 'stack'],
+  '/architecture': ['space', 'forward', 'attention', 'cloud', 'stack'],
   '/train': ['step', 'loss', 'machine'],
   '/finetune': ['mask', 'loss']
 };

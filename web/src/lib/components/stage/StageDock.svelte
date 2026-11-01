@@ -19,6 +19,7 @@
     z: number;
     neighbors: number[];
     preview: number[];
+    startHead?: number[];
   };
   type Geometry = {
     source: string;
@@ -239,6 +240,7 @@
   const modes = $derived(
     path === '/architecture'
       ? [
+          ['space', 'Space'],
           ['forward', 'Forward'],
           ['attention', 'Attention'],
           ['cloud', 'Lookup'],
@@ -337,10 +339,10 @@
     </div>
   {/if}
 
-  {#if geometryError && path === '/architecture' && (mode === 'forward' || mode === 'attention' || mode === 'cloud')}
+  {#if geometryError && path === '/architecture' && mode !== 'stack'}
     <p class="warn">{geometryError}</p>
   {:else if !geometry && path === '/architecture' && mode !== 'stack'}
-    <p class="note">Running the forward once so the simulation can use the real attention weights…</p>
+    <p class="note">Projecting the token table, including the rows from the run’s seed and the rows training left behind…</p>
   {/if}
 
   <Viewport points={scene.points} boxes={scene.boxes} segments={scene.segments} ariaLabel={scene.caption} />

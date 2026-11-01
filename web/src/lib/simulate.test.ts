@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { encodeText, glyphFor, installTokenizer, mergeFilm } from './bytes.ts';
-import { pipelineScene, sampleAt, sampleScene, unigramStep, windowScene } from './simulate.ts';
+import { pipelineScene, sampleAt, sampleScene, spaceScene, unigramStep, windowScene } from './simulate.ts';
 
 const table = JSON.parse(readFileSync(path.join(import.meta.dir, '../../../tinyllm/bpe.json'), 'utf8')) as {
   pieces: string[];
@@ -42,6 +42,96 @@ test('sharpening the unigram lowers the loss', () => {
   const later = unigramStep(ids, 1.4);
   expect(later.loss).toBeLessThan(start.loss);
   expect(later.sharpen).toBeGreaterThan(start.sharpen);
+});
+
+test('space scene connects a row’s start to its end and to a full-width neighbor', () => {
+  const scene = spaceScene(
+    {
+      source: 'checkpoints/pretrain.pt',
+      width: 128,
+      layers: 1,
+      heads: 1,
+      startKind: 'seed',
+      seed: 7,
+      meanTravel: 1.5,
+      meanCosineToStart: 0.2,
+      points: [
+        {
+          id: 1,
+          glyph: 'lamp',
+          x: 0.2,
+          y: 0.1,
+          z: 0,
+          sx: -0.4,
+          sy: 0.2,
+          sz: 0.1,
+          travel: 2.2,
+          cosineToStart: 0.15,
+          neighbors: [2],
+          neighborCos: [0.66],
+          preview: [0.4, -0.2],
+          startHead: [0.02, -0.01]
+        },
+        {
+          id: 2,
+          glyph: 'light',
+          x: 0.5,
+          y: -0.2,
+          z: 0.1,
+          sx: 0.1,
+          sy: -0.1,
+          sz: 0,
+          travel: 0.4,
+          cosineToStart: 0.8,
+          neighbors: [1],
+          neighborCos: [0.66]
+        }
+      ],
+      attention: { text: 'lamp', ids: [1], glyphs: ['lamp'], layers: [] }
+    },
+    0.1
+  );
+  expect(scene.readout).toContain('lamp');
+  expect(scene.readout).toContain('0.66');
+  expect(scene.segments.length).toBe(2);
+  expect(scene.points.some((point) => point.label.includes('start'))).toBe(true);
+  expect(scene.caption).toContain('128');
+  expect(scene.boxes.length).toBe(4);
+  const stepped = spaceScene(
+    {
+      source: 'checkpoints/pretrain.pt',
+      width: 128,
+      layers: 1,
+      heads: 1,
+      startKind: 'seed',
+      seed: 7,
+      points: [
+        {
+          id: 1,
+          glyph: 'lamp',
+          x: 0,
+          y: 0,
+          z: 0,
+          neighbors: [],
+          preview: [0.1],
+          startHead: [0.01]
+        },
+        {
+          id: 2,
+          glyph: 'light',
+          x: 1,
+          y: 0,
+          z: 0,
+          neighbors: [],
+          preview: [0.2],
+          startHead: [0.02]
+        }
+      ],
+      attention: { text: 'lamp', ids: [1, 2], glyphs: ['lamp', 'light'], layers: [] }
+    },
+    0.45
+  );
+  expect(stepped.readout).toContain('light');
 });
 
 test('temperature zero always samples the tallest logit', () => {

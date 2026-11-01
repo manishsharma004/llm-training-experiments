@@ -48,12 +48,32 @@ type FileRow = { source: string; bytes: number };
 type CleanRow = { source: string; reasons: string[]; excerpt: string };
 type KeptRow = { source: string; chars: number; after: string };
 type MetricRow = { step: number; loss: number; lr: number; phase: string };
+type GeoPoint = {
+  id: number;
+  glyph: string;
+  x: number;
+  y: number;
+  z: number;
+  sx?: number;
+  sy?: number;
+  sz?: number;
+  travel?: number;
+  cosineToStart?: number;
+  neighbors: number[];
+  neighborCos?: number[];
+  preview?: number[];
+  startHead?: number[];
+};
 type Geo = {
   source: string;
   width: number;
   layers: number;
   heads: number;
-  points: { id: number; glyph: string; x: number; y: number; z: number; neighbors: number[] }[];
+  startKind?: string;
+  seed?: number | null;
+  meanTravel?: number;
+  meanCosineToStart?: number;
+  points: GeoPoint[];
   attention: { text: string; ids: number[]; glyphs: string[]; layers: number[][][][] };
 };
 
@@ -503,10 +523,163 @@ export function lookupScene(geometry: Geo | null, ids: number[], time: number, f
     points,
     boxes: [],
     segments,
-    caption: 'Embedding lookup along the book stream. Copper is the id being read. Lines are its nearest rows in the full vector, not in this picture.',
+    caption: 'Embedding lookup along the book stream. Copper is the id being read. Lines are its nearest rows in the full width, not in this picture.',
     duration,
     readout: `Reading id ${cursor} ${active ? `(${active.glyph})` : ''} from the ${geometry.points.length.toLocaleString()}-row table`
   };
+}
+
+function spaceTour(geometry: Geo): number[] {
+  const byTravel = geometry.points
+    .slice()
+    .sort((left, right) => (right.travel ?? 0) - (left.travel ?? 0))
+    .slice(0, 8)
+    .map((point) => point.id);
+  const seen = new Set<number>();
+  const tour: number[] = [];
+  for (const id of [...geometry.attention.ids, ...byTravel]) {
+    if (seen.has(id) || !geometry.points.some((point) => point.id === id)) continue;
+    seen.add(id);
+    tour.push(id);
+    if (tour.length >= 16) break;
+  }
+  return tour.length ? tour : [geometry.points[0]?.id ?? 0];
+}
+
+export function spaceScene(geometry: Geo | null, time: number): Scene {
+  if (!geometry || geometry.points.length === 0) {
+    return {
+      points: [],
+      boxes: [],
+      segments: [],
+      caption: 'Waiting for the token table.',
+      duration: 4,
+      readout: 'Loading the width'
+    };
+  }
+  const byId = new Map(geometry.points.map((point) => [point.id, point]));
+  const tour = spaceTour(geometry);
+  const station = 0.4;
+  const duration = Math.max(4, tour.length * station);
+  const cursor = tour[Math.floor(wrap(time, duration) / station) % tour.length] ?? tour[0];
+  const active = byId.get(cursor);
+  const keep = new Set<number>([cursor, ...(active?.neighbors ?? [])]);
+  const stride = Math.max(1, Math.floor(geometry.points.length / 220));
+  const points: SimPoint[] = [];
+  const segments: SimSegment[] = [];
+  const place = (point: GeoPoint, which: 'start' | 'end') => ({
+    x: (which === 'start' ? (point.sx ?? point.x) : point.x) * 2.2,
+    y: (which === 'start' ? (point.sy ?? point.y) : point.y) * 2.2,
+    z: (which === 'start' ? (point.sz ?? point.z) : point.z) * 2.2
+  });
+  geometry.points.forEach((point, index) => {
+    const focus = keep.has(point.id);
+    if (!focus && index % stride !== 0) return;
+    const end = place(point, 'end');
+    const neighborIndex = active?.neighbors.indexOf(point.id) ?? -1;
+    const cosine = neighborIndex >= 0 ? active?.neighborCos?.[neighborIndex] : undefined;
+    points.push({
+      id: `end${point.id}`,
+      ...end,
+      color: point.id === cursor ? COPPER : neighborIndex >= 0 ? SAND : INK,
+      size: point.id === cursor ? 12 : neighborIndex >= 0 ? 8 : 3.2,
+      label:
+        point.id === cursor
+          ? `${point.glyph} end`
+          : neighborIndex === 0 && cosine != null
+            ? `${point.glyph} ${cosine.toFixed(2)}`
+            : '',
+      detail:
+        point.id === cursor
+          ? `End state of “${point.glyph}” in the ${geometry.width}-d table from ${geometry.source}. Travel from its start row is ${(point.travel ?? 0).toFixed(2)}. Cosine with that start row is ${(point.cosineToStart ?? 0).toFixed(2)}.`
+          : cosine == null
+            ? `Another trained row, drawn in the same three axes.`
+            : `Cosine with “${active?.glyph ?? ''}” in the full ${geometry.width}-d width is ${cosine.toFixed(2)}. The line is that relation, drawn after the table was flattened to three axes.`
+    });
+    if (geometry.startKind === 'seed') {
+      const start = place(point, 'start');
+      points.push({
+        id: `start${point.id}`,
+        ...start,
+        color: point.id === cursor ? '#3f7a74' : '#8a8175',
+        size: point.id === cursor ? 9 : focus ? 5 : 2.2,
+        label: point.id === cursor ? `${point.glyph} start` : '',
+        detail: `Start row of “${point.glyph}” before training, rebuilt with seed ${geometry.seed ?? '—'}.`
+      });
+    }
+  });
+  if (active && geometry.startKind === 'seed') {
+    const start = place(active, 'start');
+    const end = place(active, 'end');
+    segments.push({ ...startTo(start), ...endTo(end), color: '#3f7a74' });
+    active.neighbors.forEach((neighbor) => {
+      const other = byId.get(neighbor);
+      if (!other) return;
+      const otherEnd = place(other, 'end');
+      segments.push({
+        x1: end.x,
+        y1: end.y,
+        z1: end.z,
+        x2: otherEnd.x,
+        y2: otherEnd.y,
+        z2: otherEnd.z,
+        color: COPPER
+      });
+    });
+  }
+  const nearest = active?.neighbors?.[0];
+  const nearestPoint = nearest == null ? undefined : byId.get(nearest);
+  const nearestCos = active?.neighborCos?.[0];
+  const file = geometry.source.split('/').pop() ?? geometry.source;
+  const shown = Math.min(active?.preview?.length ?? 0, active?.startHead?.length ?? 0);
+  return {
+    points,
+    boxes: active && shown ? coordinateStrip(active, shown, geometry.width) : [],
+    segments,
+    caption: `Token rows of ${file} in their ${geometry.width}-number width. Three shared axes are only a shadow of that table. A green point is the row at initialization. Copper is the same row after training. Copper lines are nearest neighbors by cosine in the full width. The bars under the cloud are the first ${shown || 16} coordinates of the active row, green at the start and copper after training. Mean travel ${geometry.meanTravel ?? 0}, mean cosine with the start row ${geometry.meanCosineToStart ?? 0}.`,
+    duration,
+    readout: active
+      ? `“${active.glyph}” · travel ${(active.travel ?? 0).toFixed(2)} in ${geometry.width}-d · cosine to start ${(active.cosineToStart ?? 0).toFixed(2)} · nearest “${nearestPoint?.glyph ?? '—'}” ${nearestCos == null ? '' : nearestCos.toFixed(2)}`
+      : 'No row'
+  };
+}
+
+function coordinateStrip(active: GeoPoint, count: number, width: number): SimBox[] {
+  const endHead = active.preview ?? [];
+  const startHead = active.startHead ?? [];
+  const boxes: SimBox[] = [];
+  const origin = -((count - 1) * 0.28) / 2;
+  for (let index = 0; index < count; index += 1) {
+    const pair = [
+      ['start', startHead[index] ?? 0, -0.07, '#3f7a74'],
+      ['end', endHead[index] ?? 0, 0.07, '#c4622d']
+    ] as const;
+    for (const [kind, value, shift, color] of pair) {
+      const magnitude = Math.max(0.04, Math.abs(value) * 2.6);
+      const direction = value < 0 ? -1 : 1;
+      boxes.push({
+        id: `${kind}${active.id}d${index}`,
+        x: origin + index * 0.28 + shift,
+        y: -2.85 + direction * magnitude,
+        z: 0.15,
+        dx: 0.045,
+        dy: magnitude,
+        dz: 0.045,
+        color,
+        label: '',
+        detail: `${kind === 'start' ? 'Start' : 'End'} coordinate ${index + 1} of the ${width}-d row “${active.glyph}” is ${value.toFixed(3)}. The strip shows ${count} of those coordinates.`
+      });
+    }
+  }
+  return boxes;
+}
+
+function startTo(point: { x: number; y: number; z: number }) {
+  return { x1: point.x, y1: point.y, z1: point.z };
+}
+
+function endTo(point: { x: number; y: number; z: number }) {
+  return { x2: point.x, y2: point.y, z2: point.z };
 }
 
 export function stackScene(shape: SimInput['shape'], time: number, playing: boolean, exploded: boolean, query: number): Scene {
@@ -873,6 +1046,7 @@ export function buildScene(input: SimInput): Scene {
   if (path === '/clean') return cleanScene(input.clean, input.time);
   if (path === '/prepare') return windowScene(input.excerptIds, input.time, input.trainTokens, input.valTokens);
   if (path === '/tokenize') return bpeScene(input.preview, input.time);
+  if (path === '/architecture' && input.mode === 'space') return spaceScene(input.geometry, input.time);
   if (path === '/architecture' && input.mode === 'attention') {
     return forwardScene(input.geometry, input.time, input.playing, input.layer, input.head, input.query);
   }

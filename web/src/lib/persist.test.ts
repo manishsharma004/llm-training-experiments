@@ -45,5 +45,5 @@ test('stage restore keeps the clock and mode, and an unknown mode falls back', (
   expect(stage.speed).toBe(2);
   expect(stage.mode).toBe('loss');
   expect(sanitizeStage('/train', { mode: 'forward', speed: 9, time: -3 }).mode).toBe('step');
-  expect(sanitizeStage('/architecture', null).mode).toBe('forward');
+  expect(sanitizeStage('/architecture', null).mode).toBe('space');
 });

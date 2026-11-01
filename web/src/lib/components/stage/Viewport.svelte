@@ -218,10 +218,14 @@
       if (at.sx < -20 || at.sy < -10 || at.sx > width + 20 || at.sy > height + 10) continue;
       paintLabel(box.label, at.sx, at.sy - 11);
     }
+    const parked: { sx: number; sy: number }[] = [];
     for (const dot of dots) {
-      if ((dot.point.size ?? 5) < 8) continue;
+      if ((dot.point.size ?? 5) < 8 || !dot.point.label) continue;
       if (dot.at.sx < -20 || dot.at.sy < -10 || dot.at.sx > width + 20 || dot.at.sy > height + 10) continue;
-      paintLabel(dot.point.label, dot.at.sx, dot.at.sy - 14);
+      let sy = dot.at.sy - 14;
+      while (parked.some((item) => Math.abs(item.sx - dot.at.sx) < 54 && Math.abs(item.sy - sy) < 15)) sy -= 15;
+      parked.push({ sx: dot.at.sx, sy });
+      paintLabel(dot.point.label, dot.at.sx, sy);
     }
   }
 
