@@ -1,4 +1,6 @@
 <script lang="ts">
+  import AttentionPlate from '#lib/components/diagrams/AttentionPlate.svelte';
+  import ModelStack from '#lib/components/diagrams/ModelStack.svelte';
   import { breakdown, defaultShape, formatCount, type ModelShape } from '#lib/params.ts';
 
   let shape = $state<ModelShape>({ ...defaultShape });
@@ -17,12 +19,16 @@
   }
 </script>
 
-<p class="kicker">02 · Shape</p>
+<p class="kicker">05 · Shape</p>
 <h1>Where a million parameters go.</h1>
 <p class="lede">
   Every number below is a weight matrix the trainer actually allocates. Linear layers have no bias. Each LayerNorm
   has a weight and a bias. The language-model head reuses the token embedding, so its extra cost is zero.
+  Drag the stack. The plates are the tensors, in order, from the bytes up to the tied head.
 </p>
+
+<ModelStack layers={shape.nLayer} width={shape.nEmbd} heads={shape.nHead} context={shape.blockSize} mlpRatio={shape.mlpRatio} />
+<AttentionPlate heads={shape.nHead} width={shape.nEmbd} />
 
 <div class="grid">
   <section class="card">
