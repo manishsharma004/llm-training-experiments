@@ -28,6 +28,26 @@ export type RunStatus = {
   dataSource?: string;
   tokensPerSec?: number;
   valLoss?: number | null;
+  compute?: ComputeReport | null;
+};
+
+export type RangeStat = {
+  min: number;
+  avg: number;
+  max: number;
+  last: number;
+};
+
+export type ComputeReport = {
+  samples?: number;
+  elapsed_s?: number;
+  power_w?: RangeStat | null;
+  power_cap_w?: number | null;
+  energy_wh?: number;
+  vram_bytes?: RangeStat | null;
+  vram_total_bytes?: number | null;
+  process_vram_bytes?: RangeStat | null;
+  temperature_c?: Record<string, RangeStat>;
 };
 
 export type Harbor = {

@@ -14,6 +14,13 @@
   });
 
   const budget = $derived((hardware?.budget as Record<string, number> | undefined) ?? null);
+  const sensors = $derived(
+    (hardware?.sensors ?? null) as {
+      power_w?: number | null;
+      vram_used_bytes?: number | null;
+      temperature_c?: Record<string, number>;
+    } | null
+  );
   const guidance = $derived((hardware?.guidance as string[] | undefined) ?? []);
 
   function mb(bytes: number) {
@@ -41,6 +48,17 @@
       {#if hardware.hip}HIP {hardware.hip}. {/if}
       {#if hardware.total_vram_bytes}Visible memory {(Number(hardware.total_vram_bytes) / 1024 ** 3).toFixed(2)} GB.{/if}
     </p>
+    {#if sensors}
+      <p class="note">
+        {#if sensors.power_w != null}Power {Number(sensors.power_w).toFixed(1)} W.{/if}
+        {#if sensors.vram_used_bytes != null}
+          Card memory {(Number(sensors.vram_used_bytes) / 1024 ** 3).toFixed(2)} GB in use.
+        {/if}
+        {#each Object.entries(sensors.temperature_c ?? {}) as [label, celsius]}
+          {label} {celsius} °C.{' '}
+        {/each}
+      </p>
+    {/if}
     {#if hardware.gpu_blocker}<p>{hardware.gpu_blocker}</p>{/if}
     {#if !hardware.torch_gpu && hardware.install}
       <p class="note">Install the gfx1012 wheel into this repo's virtualenv, then probe again:</p>

@@ -171,6 +171,10 @@ def probe(parameters: int = 1_035_008, batch_size: int = 16, block_size: int = 1
         n_head=4,
         vram_bytes=vram,
     )
+    from tinyllm.sensors import find_gpu_device, read_gpu
+
+    gpu_device = find_gpu_device()
+    info["sensors"] = None if gpu_device is None else read_gpu(gpu_device)
     info["precision"] = "fp32"
     info["precision_reason"] = (
         "The million-parameter preset plus AdamW is a few tens of megabytes in fp32. "

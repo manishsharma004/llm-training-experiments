@@ -29,6 +29,10 @@
   let polling = $state(false);
 
   const running = $derived(run?.state === 'running');
+
+  function megabytes(bytes: number) {
+    return (bytes / (1024 * 1024)).toFixed(0);
+  }
   const latestLoss = $derived(run?.loss);
   const perplexity = $derived(latestLoss && latestLoss > 0 ? Math.exp(latestLoss) : null);
 
@@ -149,6 +153,34 @@
       <div class="stat"><span class="note">ran on</span><strong>{run.device ?? '—'}{run.arch ? ` · ${run.arch}` : ''}</strong></div>
       {#if run.parameters}<div class="stat"><span class="note">parameters</span><strong>{run.parameters.toLocaleString()}</strong></div>{/if}
     </div>
+    {#if run.compute}
+      <table>
+        <tbody>
+          {#if run.compute.power_w}
+            <tr>
+              <td>Power</td>
+              <td>{run.compute.power_w.min} / {run.compute.power_w.avg} / {run.compute.power_w.max} W min, average, peak{#if run.compute.power_cap_w} · cap {run.compute.power_cap_w} W{/if}</td>
+            </tr>
+          {/if}
+          <tr><td>Energy</td><td>{run.compute.energy_wh ?? 0} Wh</td></tr>
+          {#if run.compute.vram_bytes}
+            <tr>
+              <td>Card memory</td>
+              <td>{megabytes(run.compute.vram_bytes.min)} / {megabytes(run.compute.vram_bytes.avg)} / {megabytes(run.compute.vram_bytes.max)} MB min, average, peak{#if run.compute.vram_total_bytes} of {megabytes(run.compute.vram_total_bytes)} MB{/if}</td>
+            </tr>
+          {/if}
+          {#if run.compute.process_vram_bytes}
+            <tr>
+              <td>This process</td>
+              <td>{megabytes(run.compute.process_vram_bytes.min)} / {megabytes(run.compute.process_vram_bytes.avg)} / {megabytes(run.compute.process_vram_bytes.max)} MB allocated min, average, peak</td>
+            </tr>
+          {/if}
+          {#each Object.entries(run.compute.temperature_c ?? {}) as [label, stat]}
+            <tr><td>{label}</td><td>{stat.last} °C now · {stat.min} min · {stat.max} peak</td></tr>
+          {/each}
+        </tbody>
+      </table>
+    {/if}
     {#if run.dataSource}<p class="note">Data: {run.dataSource}. Precision fp32.{#if run.tokensPerSec} {run.tokensPerSec} tokens/s.{/if}{#if run.valLoss} Validation loss {Number(run.valLoss).toFixed(3)}.{/if}</p>{/if}
     {#if run.message}<p class="note">{run.message}</p>{/if}
     <LossChart metrics={run.metrics ?? []} />

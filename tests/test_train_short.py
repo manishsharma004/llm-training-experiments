@@ -68,3 +68,9 @@ def test_full_preset_steps_on_rx5500_when_visible(tmp_path: Path):
     assert summary["parameters"] == 1_035_008
     assert "5500" in summary["device"]
     assert "gfx1012" in str(summary["arch"])
+    compute = summary["compute"]
+    assert compute["energy_wh"] >= 0
+    assert compute["power_w"]["max"] >= compute["power_w"]["min"]
+    assert compute["vram_bytes"]["max"] >= compute["vram_bytes"]["min"]
+    assert compute["temperature_c"]["edge"]["last"] > 0
+    assert compute["temperature_c"]["junction"]["last"] > 0
