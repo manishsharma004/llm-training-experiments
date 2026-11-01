@@ -48,9 +48,9 @@
   } = $props();
 
   let canvas = $state<HTMLCanvasElement | null>(null);
-  let yaw = $state(0.7);
-  let pitch = $state(0.42);
-  let distance = $state(7.2);
+  let yaw = $state(0.45);
+  let pitch = $state(0.5);
+  let distance = $state(5.4);
   let panX = $state(0);
   let panY = $state(0);
   let hover = $state('Drag to orbit. Scroll to zoom. Shift-drag to pan. Click a mark to pin it.');
@@ -78,12 +78,14 @@
     const yPitch = y * cosPitch - zYaw * sinPitch;
     const zPitch = y * sinPitch + zYaw * cosPitch;
     const depth = distance + zPitch;
-    const scale = (Math.min(width, height) * 0.46) / Math.max(0.4, depth);
+    const scale = (Math.min(width, height) * 0.64) / Math.max(0.4, distance);
+    const foreshorten = 1 / (1 + zPitch * 0.045);
+    const drawn = scale * foreshorten;
     return {
-      sx: width / 2 + (xYaw + panX) * scale,
-      sy: height / 2 - (yPitch + panY) * scale,
+      sx: width / 2 + (xYaw + panX) * drawn,
+      sy: height / 2 - (yPitch + panY) * drawn,
       depth,
-      scale
+      scale: drawn
     };
   }
 
@@ -96,7 +98,8 @@
     return `rgb(${channels.join(',')})`;
   }
 
-  function draw() {
+  function draw(marks: { points: StagePoint[]; boxes: StageBox[]; segments: StageSegment[] }) {
+    const { points, boxes, segments } = marks;
     const node = canvas;
     if (!node) return;
     const ratio = Math.min(2, window.devicePixelRatio || 1);
@@ -116,9 +119,9 @@
     ctx.fillRect(0, 0, width, height);
     ctx.strokeStyle = 'rgba(227, 214, 196, 0.95)';
     ctx.lineWidth = 1;
-    for (let line = -4; line <= 4; line += 1) {
-      const across = [project(line, 0, -4, width, height), project(line, 0, 4, width, height)];
-      const depth = [project(-4, 0, line, width, height), project(4, 0, line, width, height)];
+    for (let line = -2; line <= 2; line += 1) {
+      const across = [project(line, 0, -2.4, width, height), project(line, 0, 2.4, width, height)];
+      const depth = [project(-2.4, 0, line, width, height), project(2.4, 0, line, width, height)];
       ctx.beginPath();
       ctx.moveTo(across[0].sx, across[0].sy);
       ctx.lineTo(across[1].sx, across[1].sy);
@@ -198,6 +201,28 @@
       ctx.arc(dot.at.sx, dot.at.sy, Math.max(2.2, (dot.point.size ?? 5) * (dot.at.scale / 48)), 0, Math.PI * 2);
       ctx.fill();
     }
+
+    ctx.font = '600 13px "Iowan Old Style", Palatino, Georgia, serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const paintLabel = (text: string, sx: number, sy: number) => {
+      const shown = [...text].slice(0, 12).join('');
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = 'rgba(36, 28, 22, 0.78)';
+      ctx.strokeText(shown, sx, sy);
+      ctx.fillStyle = '#fffaf3';
+      ctx.fillText(shown, sx, sy);
+    };
+    for (const box of boxes) {
+      const at = project(box.x, box.y + box.dy, box.z, width, height);
+      if (at.sx < -20 || at.sy < -10 || at.sx > width + 20 || at.sy > height + 10) continue;
+      paintLabel(box.label, at.sx, at.sy - 11);
+    }
+    for (const dot of dots) {
+      if ((dot.point.size ?? 5) < 8) continue;
+      if (dot.at.sx < -20 || dot.at.sy < -10 || dot.at.sx > width + 20 || dot.at.sy > height + 10) continue;
+      paintLabel(dot.point.label, dot.at.sx, dot.at.sy - 14);
+    }
   }
 
   function hit(clientX: number, clientY: number) {
@@ -221,17 +246,14 @@
   }
 
   $effect(() => {
-    points;
-    boxes;
-    segments;
+    const marks = { points, boxes, segments };
     yaw;
     pitch;
     distance;
     panX;
     panY;
     canvas;
-    const handle = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(handle);
+    draw(marks);
   });
 
   $effect(() => {
@@ -285,9 +307,9 @@
   }
 
   function resetView() {
-    yaw = 0.7;
-    pitch = 0.42;
-    distance = 7.2;
+    yaw = 0.45;
+    pitch = 0.5;
+    distance = 5.4;
     panX = 0;
     panY = 0;
   }

@@ -181,6 +181,86 @@ function bpeWord(mapped: string): number[] {
   return ids;
 }
 
+function symbolText(symbol: string): string {
+  if (!table) return symbol;
+  const bytes: number[] = [];
+  for (const char of symbol) {
+    const byte = table.unicodeToByte.get(char);
+    if (byte !== undefined) bytes.push(byte);
+  }
+  const text = new TextDecoder().decode(new Uint8Array(bytes));
+  if (text === '\n') return '↵';
+  if (text === ' ') return '␣';
+  return text.replaceAll('\n', '↵').replaceAll(' ', '␣') || '·';
+}
+
+export type MergeFrame = { pieces: string[]; note: string };
+
+const films = new Map<string, MergeFrame[]>();
+
+/** Step through the real merges for a short span of text. The last frame is the BPE encoding. */
+export function mergeFilm(text: string): MergeFrame[] {
+  const key = text.slice(0, 96);
+  const cached = films.get(key);
+  if (cached) return cached;
+  if (!table || !key) return [];
+  const words = splitWords(key).slice(0, 8);
+  const states = words.map((word) => {
+    const mapped = [...new TextEncoder().encode(word)].map((byte) => table!.byteToUnicode[byte]);
+    return mapped;
+  });
+  const snapshot = (note: string): MergeFrame => ({
+    pieces: states.flatMap((symbols) => symbols.map((symbol) => symbolText(symbol))),
+    note
+  });
+  const frames = [snapshot('Bytes, before any merge.')];
+  for (let step = 0; step < 48; step += 1) {
+    let bestRank = 1e12;
+    let wordIndex = -1;
+    let first = '';
+    let second = '';
+    states.forEach((symbols, index) => {
+      const seen = new Set<string>();
+      for (let cursor = 0; cursor < symbols.length - 1; cursor += 1) {
+        const rankKey = `${symbols[cursor]}\0${symbols[cursor + 1]}`;
+        if (seen.has(rankKey)) continue;
+        seen.add(rankKey);
+        const rank = table!.ranks.get(rankKey) ?? 1e12;
+        if (rank < bestRank) {
+          bestRank = rank;
+          wordIndex = index;
+          first = symbols[cursor];
+          second = symbols[cursor + 1];
+        }
+      }
+    });
+    if (wordIndex < 0 || bestRank >= 1e12) break;
+    const symbols = states[wordIndex];
+    const merged: string[] = [];
+    let cursor = 0;
+    while (cursor < symbols.length) {
+      const found = symbols.indexOf(first, cursor);
+      if (found < 0) {
+        merged.push(...symbols.slice(cursor));
+        break;
+      }
+      merged.push(...symbols.slice(cursor, found));
+      cursor = found;
+      if (cursor < symbols.length - 1 && symbols[cursor] === first && symbols[cursor + 1] === second) {
+        merged.push(first + second);
+        cursor += 2;
+      } else {
+        merged.push(symbols[cursor]);
+        cursor += 1;
+      }
+    }
+    states[wordIndex] = merged;
+    frames.push(snapshot(`Merge ${step + 1}: “${symbolText(first)}” + “${symbolText(second)}”.`));
+  }
+  films.set(key, frames);
+  return frames;
+}
+
 export function decodeIds(ids: number[]): string {
   if (!table) return '';
   const bytes: number[] = [];
