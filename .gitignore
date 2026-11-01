@@ -6,6 +6,7 @@ __pycache__/
 /checkpoints/
 /runs/
 /data/work/
+/data/corpus/
 *.pt
 web/node_modules/
 web/.svelte-kit/
