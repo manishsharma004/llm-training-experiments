@@ -21,6 +21,9 @@
   let rate = $state(untrack(() => learningRate));
   let batchSize = $state(16);
   let seed = $state(7);
+  let deviceChoice = $state<'auto' | 'cpu' | 'gpu'>('auto');
+  let gfxOverride = $state(false);
+  let hardware = $state<Record<string, unknown> | null>(null);
   let run = $state<RunStatus | null>(null);
   let error = $state('');
   let polling = $state(false);
@@ -52,7 +55,9 @@
         finetuneSteps: ftCount,
         learningRate: rate,
         batchSize,
-        seed
+        seed,
+        device: deviceChoice,
+        gfxOverride
       })
     });
     const body = await response.json();
@@ -64,6 +69,17 @@
     run = { state: 'running', phase, step: 0, totalSteps: phase === 'finetune' ? ftCount : stepCount, metrics: [], message: 'Starting.' };
     refresh(body.id);
   }
+
+  $effect(() => {
+    if (!browser) return;
+    const gfx = gfxOverride;
+    fetch(`/api/device?gfx=${gfx ? '1' : '0'}`)
+      .then((response) => response.json())
+      .then((body) => {
+        if (!body.error) hardware = body;
+      })
+      .catch(() => undefined);
+  });
 
   $effect(() => {
     if (!browser || polling || run) return;
@@ -81,15 +97,33 @@
 </script>
 
 <div class="card stack">
+  {#if hardware}
+    <p class="note">
+      Device now: {hardware.torch_gpu ? `${hardware.backend} · ${hardware.name}` : hardware.name}
+      {#if hardware.arch}({hardware.arch}){/if}.
+      {#if hardware.rx5500_present}RX 5500 is on the PCI bus.{/if}
+      {#if hardware.gpu_blocker}{hardware.gpu_blocker}{/if}
+    </p>
+  {/if}
   <div class="row">
+    <label class="field">Device
+      <select bind:value={deviceChoice}>
+        <option value="auto">Auto</option>
+        <option value="gpu">GPU</option>
+        <option value="cpu">CPU</option>
+      </select>
+    </label>
+    <label class="field">RX 5500 compatibility
+      <input type="checkbox" bind:checked={gfxOverride} />
+    </label>
     {#if phase !== 'finetune'}
       <label class="field">Pretrain steps
-        <input type="number" min="1" max="400" bind:value={stepCount} />
+        <input type="number" min="1" max="2000" bind:value={stepCount} />
       </label>
     {/if}
     {#if phase !== 'pretrain'}
       <label class="field">Finetune steps
-        <input type="number" min="1" max="400" bind:value={ftCount} />
+        <input type="number" min="1" max="2000" bind:value={ftCount} />
       </label>
     {/if}
     <label class="field">Batch
@@ -112,7 +146,10 @@
       <div class="stat"><span class="note">step</span><strong>{run.step ?? 0} / {run.totalSteps ?? '?'}</strong></div>
       <div class="stat"><span class="note">loss</span><strong>{run.loss ? run.loss.toFixed(3) : '—'}</strong></div>
       <div class="stat"><span class="note">perplexity</span><strong>{perplexity ? perplexity.toFixed(1) : '—'}</strong></div>
+      <div class="stat"><span class="note">ran on</span><strong>{run.device ?? '—'}{run.arch ? ` · ${run.arch}` : ''}</strong></div>
+      {#if run.parameters}<div class="stat"><span class="note">parameters</span><strong>{run.parameters.toLocaleString()}</strong></div>{/if}
     </div>
+    {#if run.dataSource}<p class="note">Data: {run.dataSource}. Precision fp32.{#if run.tokensPerSec} {run.tokensPerSec} tokens/s.{/if}{#if run.valLoss} Validation loss {Number(run.valLoss).toFixed(3)}.{/if}</p>{/if}
     {#if run.message}<p class="note">{run.message}</p>{/if}
     <LossChart metrics={run.metrics ?? []} />
     {#if run.probes && run.probes.length}

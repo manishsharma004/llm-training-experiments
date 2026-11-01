@@ -11,9 +11,11 @@ export type RunRequest = {
   seed: number;
   batchSize: number;
   learningRate: number;
+  device: 'auto' | 'cpu' | 'gpu';
+  gfxOverride: boolean;
 };
 
-const MAX_STEPS = 400;
+const MAX_STEPS = 2000;
 
 export function repoRoot(): string {
   const cwd = process.cwd();
@@ -125,6 +127,13 @@ export function startRun(request: RunRequest) {
   if (phase !== 'pretrain' && phase !== 'finetune' && phase !== 'pipeline') {
     return { ok: false as const, status: 400, error: 'Phase must be pretrain, finetune, or pipeline.' };
   }
+  if ((phase === 'pretrain' || phase === 'pipeline') && !existsSync(path.join(root, 'data', 'work', 'train.bin'))) {
+    return {
+      ok: false as const,
+      status: 400,
+      error: 'Prepare the dataset first. data/work/train.bin is not there yet.'
+    };
+  }
   if (phase === 'finetune' && !existsSync(path.join(root, 'checkpoints', 'pretrain.pt'))) {
     return {
       ok: false as const,
@@ -140,6 +149,7 @@ export function startRun(request: RunRequest) {
   const learningRate = Number.isFinite(request.learningRate)
     ? Math.min(0.1, Math.max(1e-5, request.learningRate))
     : 3e-3;
+  const device = request.device === 'cpu' || request.device === 'gpu' ? request.device : 'auto';
 
   const id = `${new Date().toISOString().replace(/[:.]/g, '-')}-${Math.random().toString(16).slice(2, 6)}`;
   const dir = path.join(runsDir(root), id);
@@ -155,12 +165,27 @@ export function startRun(request: RunRequest) {
     String(learningRate),
     '--seed',
     String(seed),
+    '--device',
+    device,
     '--status',
     statusPath
   ];
+  const sft = path.join(root, 'data', 'work', 'sft.jsonl');
+  const dataArgs = existsSync(path.join(root, 'data', 'work', 'train.bin')) ? ['--data', 'data/work'] : [];
+  const sftArgs = existsSync(sft) ? ['--sft', 'data/work/sft.jsonl'] : [];
   const args = ['-m', 'tinyllm.cli'];
   if (phase === 'pretrain') {
-    args.push('pretrain', '--steps', String(steps), '--sample-every', '40', '--out', 'checkpoints/pretrain.pt', ...shared);
+    args.push(
+      'pretrain',
+      '--steps',
+      String(steps),
+      '--sample-every',
+      '40',
+      '--out',
+      'checkpoints/pretrain.pt',
+      ...dataArgs,
+      ...shared
+    );
   } else if (phase === 'finetune') {
     args.push(
       'finetune',
@@ -172,6 +197,7 @@ export function startRun(request: RunRequest) {
       'checkpoints/pretrain.pt',
       '--out',
       'checkpoints/sft.pt',
+      ...sftArgs,
       ...shared
     );
   } else {
@@ -185,6 +211,8 @@ export function startRun(request: RunRequest) {
       '40',
       '--out',
       'checkpoints',
+      ...dataArgs,
+      ...sftArgs,
       ...shared
     );
   }
@@ -207,9 +235,13 @@ export function startRun(request: RunRequest) {
   );
 
   const stderrChunks: Buffer[] = [];
+  const env = { ...process.env, PYTHONUNBUFFERED: '1' } as NodeJS.ProcessEnv;
+  if (request.gfxOverride) {
+    env.HSA_OVERRIDE_GFX_VERSION = '10.3.0';
+  }
   const child: ChildProcess = spawn(pythonBin(root), args, {
     cwd: root,
-    env: { ...process.env, PYTHONUNBUFFERED: '1' }
+    env
   });
   child.stderr?.on('data', (chunk: Buffer) => {
     stderrChunks.push(chunk);
@@ -305,4 +337,61 @@ export function readHarbor(root = repoRoot()) {
     prose: sentences.join(' '),
     pairs: pairs.concat(harbor.paraphrases)
   };
+}
+
+function stageResult(command: string[], input?: string) {
+  const root = repoRoot();
+  const result = spawnSync(pythonBin(root), ['-m', 'tinyllm.stages', ...command], {
+    cwd: root,
+    encoding: 'utf8',
+    timeout: 60_000,
+    input
+  });
+  if (result.status !== 0) {
+    return { ok: false as const, status: 400, error: (result.stderr || result.stdout || 'Stage failed.').slice(-1000) };
+  }
+  return { ok: true as const, report: JSON.parse(result.stdout) as Record<string, unknown> };
+}
+
+export function dataReport() {
+  return stageResult(['report', '--raw', 'data/raw', '--work', 'data/work']);
+}
+
+export function runGather() {
+  return stageResult(['gather', '--raw', 'data/raw', '--work', 'data/work']);
+}
+
+export function runClean() {
+  return stageResult(['clean', '--work', 'data/work']);
+}
+
+export function runPrepare() {
+  return stageResult(['prepare', '--work', 'data/work', '--block-size', '128']);
+}
+
+export function ingestDocument(name: string, text: string) {
+  return stageResult(['ingest', '--raw', 'data/raw', '--name', name.slice(0, 80)], text.slice(0, 200_000));
+}
+
+let deviceCache: { at: number; gfx: boolean; body: string } | null = null;
+
+export function probeDevice(gfxOverride: boolean) {
+  const now = Date.now();
+  if (deviceCache && deviceCache.gfx === gfxOverride && now - deviceCache.at < 20_000) {
+    return { ok: true as const, device: JSON.parse(deviceCache.body) as Record<string, unknown> };
+  }
+  const root = repoRoot();
+  const env = { ...process.env, PYTHONUNBUFFERED: '1' } as NodeJS.ProcessEnv;
+  if (gfxOverride) env.HSA_OVERRIDE_GFX_VERSION = '10.3.0';
+  const result = spawnSync(pythonBin(root), ['-m', 'tinyllm.device'], {
+    cwd: root,
+    encoding: 'utf8',
+    timeout: 120_000,
+    env
+  });
+  if (result.status !== 0) {
+    return { ok: false as const, status: 500, error: (result.stderr || result.stdout || 'Device probe failed.').slice(-1000) };
+  }
+  deviceCache = { at: now, gfx: gfxOverride, body: result.stdout };
+  return { ok: true as const, device: JSON.parse(result.stdout) as Record<string, unknown> };
 }

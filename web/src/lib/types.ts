@@ -22,6 +22,12 @@ export type RunStatus = {
   probes?: Probe[];
   checkpoint?: string;
   message?: string;
+  device?: string;
+  arch?: string;
+  parameters?: number;
+  dataSource?: string;
+  tokensPerSec?: number;
+  valLoss?: number | null;
 };
 
 export type Harbor = {
