@@ -1,10 +1,9 @@
 <script lang="ts">
-  import AttentionPlate from '#lib/components/diagrams/AttentionPlate.svelte';
-  import ModelStack from '#lib/components/diagrams/ModelStack.svelte';
-  import { breakdown, defaultShape, formatCount, type ModelShape } from '#lib/params.ts';
+  import { lab } from '#lib/lab.svelte.ts';
+  import { breakdown, defaultShape, formatCount } from '#lib/params.ts';
 
-  let shape = $state<ModelShape>({ ...defaultShape });
-  const report = $derived(breakdown(shape));
+  const shape = $derived(lab.shape);
+  const report = $derived(breakdown(lab.shape));
   const parts = $derived([
     ['Token embedding', report.tokenEmbedding, '#1e4642'],
     ['Position embedding', report.positionEmbedding, '#3f7a74'],
@@ -15,7 +14,7 @@
   const headDim = $derived(shape.nHead > 0 ? shape.nEmbd / shape.nHead : 0);
 
   function reset() {
-    shape = { ...defaultShape };
+    lab.shape = { ...defaultShape };
   }
 </script>
 
@@ -24,29 +23,27 @@
 <p class="lede">
   Every number below is a weight matrix the trainer actually allocates. Linear layers have no bias. Each LayerNorm
   has a weight and a bias. The language-model head reuses the token embedding, so its extra cost is zero.
-  Drag the stack. The plates are the tensors, in order, from the bytes up to the tied head.
+  The stage beside this page projects the real 128-wide embedding, the attention of one sentence, and this stack.
+  Drag to orbit, scroll to zoom, and click a byte, a weight, or a block.
 </p>
-
-<ModelStack layers={shape.nLayer} width={shape.nEmbd} heads={shape.nHead} context={shape.blockSize} mlpRatio={shape.mlpRatio} />
-<AttentionPlate heads={shape.nHead} width={shape.nEmbd} />
 
 <div class="grid">
   <section class="card">
     <div class="row">
       <label class="field">Layers {shape.nLayer}
-        <input type="range" min="1" max="12" bind:value={shape.nLayer} />
+        <input type="range" min="1" max="12" bind:value={lab.shape.nLayer} />
       </label>
       <label class="field">Width {shape.nEmbd}
-        <input type="range" min="32" max="256" step="32" bind:value={shape.nEmbd} />
+        <input type="range" min="32" max="256" step="32" bind:value={lab.shape.nEmbd} />
       </label>
       <label class="field">Heads {shape.nHead}
-        <input type="range" min="1" max="8" bind:value={shape.nHead} />
+        <input type="range" min="1" max="8" bind:value={lab.shape.nHead} />
       </label>
       <label class="field">Context {shape.blockSize}
-        <input type="range" min="32" max="256" step="32" bind:value={shape.blockSize} />
+        <input type="range" min="32" max="256" step="32" bind:value={lab.shape.blockSize} />
       </label>
       <label class="field">MLP ratio {shape.mlpRatio}
-        <input type="range" min="2" max="4" bind:value={shape.mlpRatio} />
+        <input type="range" min="2" max="4" bind:value={lab.shape.mlpRatio} />
       </label>
       <button class="btn ghost" onclick={reset}>Reset to the preset</button>
     </div>

@@ -38,8 +38,18 @@ button, input, textarea, select { font: inherit; color: inherit; }
 
 .shell {
   display: grid;
-  grid-template-columns: 240px 1fr;
+  grid-template-columns: 220px minmax(0, 1fr);
+  grid-template-areas:
+    "rail main"
+    "rail dock";
   min-height: 100vh;
+}
+
+.shell > .rail { grid-area: rail; }
+.shell > .main { grid-area: main; }
+.shell > .dock {
+  grid-area: dock;
+  padding: 8px 28px 48px;
 }
 
 .rail {
@@ -101,8 +111,24 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .rail a[aria-current='page'] span { color: #f0c7a4; }
 
 .main {
-  padding: 36px 48px 80px;
-  max-width: 1080px;
+  padding: 36px 40px 80px;
+  max-width: none;
+}
+
+@media (min-width: 1280px) {
+  .shell {
+    grid-template-columns: 220px minmax(520px, 1.05fr) minmax(460px, 0.95fr);
+    grid-template-areas: "rail main dock";
+  }
+  .shell > .dock {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow: auto;
+    padding: 22px 18px 32px;
+    border-left: 1px solid var(--line);
+    background: rgba(255, 250, 243, 0.72);
+  }
 }
 
 h1, h2, h3 {
@@ -270,7 +296,14 @@ th { font-weight: 550; color: var(--ink-soft); font-size: 0.85rem; }
 .block ol { margin: 8px 0 0; padding-left: 18px; }
 
 @media (max-width: 860px) {
-  .shell { grid-template-columns: 1fr; }
+  .shell {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "rail"
+      "main"
+      "dock";
+  }
+  .shell > .dock { padding: 8px 16px 48px; }
   .rail {
     position: sticky;
     top: 0;

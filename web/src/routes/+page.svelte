@@ -1,5 +1,4 @@
 <script lang="ts">
-  import PipelineFigure from '#lib/components/diagrams/PipelineFigure.svelte';
   import { breakdown, formatCount } from '#lib/params.ts';
 
   const report = breakdown();
@@ -18,8 +17,8 @@
 <p class="lede">
   The path is the one a training run actually follows: gather documents, clean them with reasons you can read,
   pack the bytes into a train and validation split, then train a 1,035,008-parameter model. On an RX 5500 the same
-  loop runs on the GPU when ROCm exposes the card. Every stage leaves a report, so the loss curve is not the only
-  thing you can inspect.
+  loop runs on the GPU when ROCm exposes the card. The stage on the right is the same path as volumes you can orbit,
+  zoom, and pick. On a narrow window it sits under this column.
 </p>
 
 <div class="grid">
@@ -42,5 +41,3 @@
     </a>
   {/each}
 </div>
-
-<PipelineFigure />

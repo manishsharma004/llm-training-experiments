@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import WindowCut from '#lib/components/diagrams/WindowCut.svelte';
 
   let report = $state<Record<string, unknown> | null>(null);
   let error = $state('');
@@ -36,8 +35,6 @@
   Documents are split into train and validation before they are concatenated, so a validation loss is not just a replay of the training windows.
   A newline byte separates documents. The byte tokenizer from the lab is the same encoding written into <span class="formula" style="display:inline;padding:2px 6px">train.bin</span>.
 </p>
-
-<WindowCut />
 
 <button class="btn" onclick={prepare} disabled={busy}>{busy ? 'Preparing' : 'Prepare train and validation streams'}</button>
 {#if error}<p class="warn">{error}</p>{/if}

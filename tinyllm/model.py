@@ -29,7 +29,12 @@ class CausalSelfAttention(nn.Module):
         mask = torch.tril(torch.ones(config.block_size, config.block_size))
         self.register_buffer("mask", mask.view(1, 1, config.block_size, config.block_size), persistent=False)
 
-    def forward(self, x: torch.Tensor, key_padding: torch.Tensor | None = None) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor,
+        key_padding: torch.Tensor | None = None,
+        record: list | None = None,
+    ) -> torch.Tensor:
         batch, steps, channels = x.shape
         qkv = self.qkv(x)
         query, key, value = qkv.split(self.n_embd, dim=2)
@@ -48,6 +53,8 @@ class CausalSelfAttention(nn.Module):
             scores = scores.masked_fill(fully_masked, 0.0)
 
         weights = F.softmax(scores, dim=-1)
+        if record is not None:
+            record.append(weights.detach())
         weights = self.attn_drop(weights)
         mixed = weights @ value
         mixed = mixed.transpose(1, 2).contiguous().view(batch, steps, channels)
@@ -74,8 +81,16 @@ class Block(nn.Module):
         self.norm2 = nn.LayerNorm(config.n_embd)
         self.mlp = MLP(config)
 
-    def forward(self, x: torch.Tensor, key_padding: torch.Tensor | None = None) -> torch.Tensor:
-        x = x + self.attn(self.norm1(x), key_padding=key_padding)
+    def forward(
+        self,
+        x: torch.Tensor,
+        key_padding: torch.Tensor | None = None,
+        record: list | None = None,
+    ) -> torch.Tensor:
+        attn_record: list | None = [] if record is not None else None
+        x = x + self.attn(self.norm1(x), key_padding=key_padding, record=attn_record)
+        if record is not None and attn_record:
+            record.append(attn_record[0])
         x = x + self.mlp(self.norm2(x))
         return x
 

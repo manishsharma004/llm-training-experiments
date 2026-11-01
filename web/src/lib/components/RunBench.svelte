@@ -70,7 +70,17 @@
       if (body.run) run = body.run;
       return;
     }
-    run = { state: 'running', phase, step: 0, totalSteps: phase === 'finetune' ? ftCount : stepCount, metrics: [], message: 'Starting.' };
+    run = {
+      state: 'running',
+      phase,
+      step: 0,
+      totalSteps: phase === 'finetune' ? ftCount : stepCount,
+      metrics: [],
+      tokensTrained: 0,
+      tokensSeen: 0,
+      elapsedS: 0,
+      message: 'Starting. Totals update on each step.'
+    };
     refresh(body.id);
   }
 
@@ -148,6 +158,8 @@
     <div class="stats">
       <div class="stat"><span class="note">{run.phase ?? phase}</span><strong>{run.state}</strong></div>
       <div class="stat"><span class="note">step</span><strong>{run.step ?? 0} / {run.totalSteps ?? '?'}</strong></div>
+      <div class="stat"><span class="note">tokens trained</span><strong>{run.tokensTrained != null ? run.tokensTrained.toLocaleString() : '—'}</strong></div>
+      <div class="stat"><span class="note">tokens/s</span><strong>{run.tokensPerSec ? Math.round(run.tokensPerSec).toLocaleString() : '—'}</strong></div>
       <div class="stat"><span class="note">loss</span><strong>{run.loss ? run.loss.toFixed(3) : '—'}</strong></div>
       <div class="stat"><span class="note">perplexity</span><strong>{perplexity ? perplexity.toFixed(1) : '—'}</strong></div>
       <div class="stat"><span class="note">ran on</span><strong>{run.device ?? '—'}{run.arch ? ` · ${run.arch}` : ''}</strong></div>
@@ -156,6 +168,10 @@
     {#if run.compute}
       <table>
         <tbody>
+          <tr>
+            <td>Tokens trained</td>
+            <td>{run.tokensTrained != null ? run.tokensTrained.toLocaleString() : '—'}{#if run.tokensSeen != null && run.tokensSeen !== run.tokensTrained} of {run.tokensSeen.toLocaleString()} seen{/if}{#if run.elapsedS != null} · {run.elapsedS}s{/if}</td>
+          </tr>
           {#if run.compute.power_w}
             <tr>
               <td>Power</td>

@@ -1,33 +1,31 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import LossMask from '#lib/components/diagrams/LossMask.svelte';
   import RunBench from '#lib/components/RunBench.svelte';
+  import { lab } from '#lib/lab.svelte.ts';
   import { encodeBytes } from '#lib/bytes.ts';
   import type { Harbor } from '#lib/types.ts';
 
   let harbor = $state<Harbor | null>(null);
   let index = $state(0);
-  let prompt = $state('Question: What is the lighthouse lamp?\nAnswer:');
-  let completion = $state(' copper\n');
 
   onMount(async () => {
     const response = await fetch('/api/harbor');
     harbor = await response.json();
     if (harbor && harbor.pairs[0]) {
-      prompt = harbor.pairs[0].prompt;
-      completion = harbor.pairs[0].completion;
+      lab.prompt = harbor.pairs[0].prompt;
+      lab.completion = harbor.pairs[0].completion;
     }
   });
 
-  const promptTokens = $derived(encodeBytes(prompt));
-  const completionTokens = $derived(encodeBytes(completion));
+  const promptTokens = $derived(encodeBytes(lab.prompt));
+  const completionTokens = $derived(encodeBytes(lab.completion));
   const promptLen = $derived(promptTokens.length);
 
   function choose(next: number) {
     if (!harbor) return;
     index = next;
-    prompt = harbor.pairs[next].prompt;
-    completion = harbor.pairs[next].completion;
+    lab.prompt = harbor.pairs[next].prompt;
+    lab.completion = harbor.pairs[next].completion;
   }
 </script>
 
@@ -36,18 +34,16 @@
 <p class="lede">
   Supervised finetuning does not swap the architecture. It changes which tokens are allowed to produce a gradient.
   The prompt is context. Labels that would ask the model to copy the question are set to −100 and ignored.
-  Copper tokens below are the ones the loss sees.
+  Copper volumes on the stage are the positions the loss sees. Drag along them.
 </p>
-
-<LossMask {prompt} {completion} />
 
 <div class="grid">
   <section class="card">
     <label class="field">Prompt
-      <textarea bind:value={prompt}></textarea>
+      <textarea bind:value={lab.prompt}></textarea>
     </label>
     <label class="field">Completion
-      <textarea bind:value={completion}></textarea>
+      <textarea bind:value={lab.completion}></textarea>
     </label>
     {#if harbor}
       <div class="row">

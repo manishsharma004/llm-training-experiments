@@ -107,6 +107,9 @@ def _run(
     metrics: list[dict] = []
     last_loss = float(init_loss) if init_loss is not None else math.nan
     probes: list[dict[str, str]] = []
+    tokens_trained = 0
+    tokens_seen = 0
+    run_started = time.perf_counter()
     meter = GpuMeter.open()
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(device)
@@ -148,6 +151,11 @@ def _run(
             _logits, loss = model(inputs, labels=labels, key_padding=key_padding)
         else:
             raise ValueError(f"unknown phase {phase}")
+
+        seen = int(inputs.shape[0] * inputs.shape[1])
+        trained = int((labels != -100).sum().item())
+        tokens_seen += seen
+        tokens_trained += trained
 
         optimizer.zero_grad(set_to_none=True)
         loss.backward()
@@ -194,6 +202,9 @@ def _run(
                     "backend": device_info.get("backend"),
                     "precision": "fp32",
                     "tokensPerSec": round(tokens_per_sec, 1),
+                    "tokensTrained": tokens_trained,
+                    "tokensSeen": tokens_seen,
+                    "elapsedS": round(time.perf_counter() - run_started, 3),
                     "dataSource": data_source,
                     "valLoss": val_loss,
                     "compute": compute,
@@ -215,6 +226,10 @@ def _run(
         "parameters": parameter_count,
         "backend": device_info.get("backend"),
         "precision": "fp32",
+        "tokensPerSec": round(tokens_per_sec, 1),
+        "tokensTrained": tokens_trained,
+        "tokensSeen": tokens_seen,
+        "elapsedS": round(time.perf_counter() - run_started, 3),
         "dataSource": data_source,
         "valLoss": val_loss,
         "compute": compute,

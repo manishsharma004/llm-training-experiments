@@ -1,5 +1,5 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 export type Phase = 'pretrain' | 'finetune' | 'pipeline';
@@ -227,7 +227,11 @@ export function startRun(request: RunRequest) {
         totalSteps: total,
         metrics: [],
         probes: [],
-        message: 'Loading PyTorch and building the model.'
+        tokensTrained: 0,
+        tokensSeen: 0,
+        elapsedS: 0,
+        compute: null,
+        message: 'Loading PyTorch and building the model. Token, power, and temperature totals update on each step.'
       },
       null,
       2
@@ -394,4 +398,45 @@ export function probeDevice(gfxOverride: boolean) {
   }
   deviceCache = { at: now, gfx: gfxOverride, body: result.stdout };
   return { ok: true as const, device: JSON.parse(result.stdout) as Record<string, unknown> };
+}
+
+export function trainExcerpt(root = repoRoot()) {
+  const candidates = ['data/corpus/work/train.bin', 'data/work/train.bin'];
+  for (const rel of candidates) {
+    const abs = path.join(root, rel);
+    if (!existsSync(abs)) continue;
+    const file = readFileSync(abs);
+    return {
+      path: rel,
+      total: file.length,
+      bytes: [...file.subarray(0, 240)]
+    };
+  }
+  return null;
+}
+
+let geometryCache: { key: string; body: string } | null = null;
+
+export function modelGeometry() {
+  const root = repoRoot();
+  const candidates = ['checkpoints/corpus.pt', 'checkpoints/pretrain.pt', 'checkpoints/sft.pt'];
+  const rel = candidates.find((item) => existsSync(path.join(root, item))) ?? '';
+  const key = rel ? `${rel}:${statSync(path.join(root, rel)).mtimeMs}:axes` : 'init';
+  if (geometryCache?.key === key) {
+    return { ok: true as const, geometry: JSON.parse(geometryCache.body) as Record<string, unknown> };
+  }
+  const args = ['-m', 'tinyllm.inspect'];
+  if (rel) args.push('--checkpoint', rel);
+  const result = spawnSync(pythonBin(root), args, {
+    cwd: root,
+    encoding: 'utf8',
+    timeout: 180_000,
+    maxBuffer: 16_000_000,
+    env: { ...process.env, PYTHONUNBUFFERED: '1' } as NodeJS.ProcessEnv
+  });
+  if (result.status !== 0) {
+    return { ok: false as const, status: 500, error: (result.stderr || result.stdout || 'Could not project the model.').slice(-1200) };
+  }
+  geometryCache = { key, body: result.stdout };
+  return { ok: true as const, geometry: JSON.parse(result.stdout) as Record<string, unknown> };
 }

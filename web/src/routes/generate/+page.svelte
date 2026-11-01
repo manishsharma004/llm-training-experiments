@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { softmax } from '#lib/bytes.ts';
+  import { lab } from '#lib/lab.svelte.ts';
 
   const demo = [
     { glyph: 'c', logit: 2.4 },
@@ -11,7 +12,6 @@
     { glyph: 'x', logit: -1.6 }
   ];
 
-  let temperature = $state(0.8);
   let prompt = $state('The lighthouse lamp is');
   let maxNewTokens = $state(24);
   let topK = $state(0);
@@ -20,7 +20,7 @@
   let error = $state('');
   let samples = $state<{ checkpoint: string; text: string; prompt: string }[]>([]);
 
-  const probs = $derived(distribution(temperature));
+  const probs = $derived(distribution(lab.temperature));
   const greedy = $derived(distribution(0));
 
   function distribution(scale: number): number[] {
@@ -55,7 +55,7 @@
             body: JSON.stringify({
               checkpoint: row.path,
               prompt,
-              temperature,
+              temperature: lab.temperature,
               maxNewTokens,
               topK
             })
@@ -83,12 +83,12 @@
 </p>
 
 <section class="card">
-  <label class="field">Temperature {temperature.toFixed(2)}
-    <input type="range" min="0" max="1.6" step="0.05" bind:value={temperature} />
+  <label class="field">Temperature {lab.temperature.toFixed(2)}
+    <input type="range" min="0" max="1.6" step="0.05" bind:value={lab.temperature} />
   </label>
   <div class="grid">
     <div>
-      <h3>{temperature === 0 ? 'Greedy' : 'Softmax'}</h3>
+      <h3>{lab.temperature === 0 ? 'Greedy' : 'Softmax'}</h3>
       <div class="bars">
         {#each demo as row, index}
           <div class="bar-row">

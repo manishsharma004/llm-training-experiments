@@ -5,6 +5,7 @@
   import '@fontsource/ibm-plex-sans/500.css';
   import '@fontsource/ibm-plex-mono/400.css';
   import { page } from '$app/state';
+  import StageDock from '#lib/components/stage/StageDock.svelte';
 
   let { children } = $props();
 
@@ -38,4 +39,5 @@
   <main class="main">
     {@render children()}
   </main>
+  <StageDock />
 </div>

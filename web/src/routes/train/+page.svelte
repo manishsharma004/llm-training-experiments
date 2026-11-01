@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import TrainStep from '#lib/components/diagrams/TrainStep.svelte';
   import RunBench from '#lib/components/RunBench.svelte';
 
   let hardware = $state<Record<string, unknown> | null>(null);
@@ -34,9 +33,8 @@
   Auto uses a GPU when this PyTorch process can see one, and the CPU otherwise. Choosing GPU on a machine
   where the RX 5500 is not visible stops the run and explains why, instead of silently training on the CPU.
   The preset stays in fp32: weights, gradients, and AdamW states are about 16MB, which fits in 4GB with room to spare.
+  Token totals, power, energy, memory, and temperature stay on the stage while the run is going, not only after it finishes.
 </p>
-
-<TrainStep />
 
 {#if probeError}<p class="warn">{probeError}</p>{/if}
 {#if hardware}

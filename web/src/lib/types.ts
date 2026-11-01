@@ -27,6 +27,9 @@ export type RunStatus = {
   parameters?: number;
   dataSource?: string;
   tokensPerSec?: number;
+  tokensTrained?: number;
+  tokensSeen?: number;
+  elapsedS?: number;
   valLoss?: number | null;
   compute?: ComputeReport | null;
 };

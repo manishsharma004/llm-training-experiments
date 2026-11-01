@@ -31,6 +31,8 @@ def test_pretrain_loss_drops_and_finetune_runs(tmp_path: Path):
     losses = [row["loss"] for row in summary["metrics"]]
     assert losses[-1] < losses[0]
     assert status.read_text().find('"state": "done"') != -1
+    assert summary["tokensTrained"] == train.steps * train.batch_size * model.block_size
+    assert summary["tokensSeen"] == summary["tokensTrained"]
 
     ft = TrainConfig(
         steps=3,
@@ -45,6 +47,7 @@ def test_pretrain_loss_drops_and_finetune_runs(tmp_path: Path):
     ft_summary = finetune(pre_path, ft, tmp_path / "sft.pt", tmp_path / "ft.json")
     assert ft_summary["state"] == "done"
     assert ft_summary["probes"]
+    assert 0 < ft_summary["tokensTrained"] <= ft_summary["tokensSeen"]
 
 
 def test_full_preset_steps_on_rx5500_when_visible(tmp_path: Path):
@@ -74,3 +77,4 @@ def test_full_preset_steps_on_rx5500_when_visible(tmp_path: Path):
     assert compute["vram_bytes"]["max"] >= compute["vram_bytes"]["min"]
     assert compute["temperature_c"]["edge"]["last"] > 0
     assert compute["temperature_c"]["junction"]["last"] > 0
+    assert summary["tokensTrained"] == 2 * 4 * 128
