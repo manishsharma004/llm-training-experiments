@@ -23,7 +23,7 @@ from tinyllm.model import TinyLM
 from tinyllm.schedule import learning_rate
 from tinyllm.sensors import GpuMeter
 from tinyllm.status import read_status, write_status
-from tinyllm.tokenizer import decode, encode, unpack_ids
+from tinyllm.tokenizer import decode_for_vocab, encode_for_vocab, unpack_ids
 
 
 def _set_seed(seed: int) -> None:
@@ -68,11 +68,11 @@ def _probe(model: TinyLM, prompts: list[str], device: torch.device) -> list[dict
     model.eval()
     rows = []
     for prompt in prompts:
-        ids = encode(prompt) or [10]
+        ids = encode_for_vocab(prompt, model.config.vocab_size) or [10]
         tokens = torch.tensor([ids], dtype=torch.long, device=device)
         tokens = tokens[:, -model.config.block_size :]
         out = model.generate(tokens, max_new_tokens=24, temperature=0.0)
-        rows.append({"prompt": prompt, "completion": decode(out[0].tolist())})
+        rows.append({"prompt": prompt, "completion": decode_for_vocab(out[0].tolist(), model.config.vocab_size)})
     model.train()
     return rows
 

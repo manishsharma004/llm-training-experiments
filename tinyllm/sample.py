@@ -7,7 +7,7 @@ from pathlib import Path
 import torch
 
 from tinyllm.checkpoint import load_model
-from tinyllm.tokenizer import decode, encode
+from tinyllm.tokenizer import decode_for_vocab, encode_for_vocab
 
 
 @torch.no_grad()
@@ -18,10 +18,11 @@ def complete(
     temperature: float = 0.0,
     top_k: int | None = None,
     device: str = "cpu",
-) -> str:
+) -> dict:
     torch_device = torch.device(device)
     model, _blob = load_model(checkpoint, torch_device)
-    ids = encode(prompt) or [10]
+    vocab_size = model.config.vocab_size
+    ids = encode_for_vocab(prompt, vocab_size) or [min(10, vocab_size - 1)]
     tokens = torch.tensor([ids], dtype=torch.long, device=torch_device)
     # Keep the prompt inside the context window.
     tokens = tokens[:, -model.config.block_size :]
@@ -31,5 +32,5 @@ def complete(
         temperature=temperature,
         top_k=top_k,
     )
-    text = decode(out[0].tolist())
-    return text
+    text = decode_for_vocab(out[0].tolist(), vocab_size)
+    return {"prompt": prompt, "text": text, "vocabSize": vocab_size}

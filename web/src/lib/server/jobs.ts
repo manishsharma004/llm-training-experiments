@@ -350,13 +350,19 @@ export function sampleCheckpoint(input: {
     { cwd: root, encoding: 'utf8', timeout: 120_000 }
   );
   if (result.status !== 0) {
+    const raw = result.stderr || result.stdout || 'Sampling failed.';
+    const error = raw
+      .split('\n')
+      .filter((line) => !line.includes('Failed to initialize NumPy') && !line.includes('tensor_numpy.cpp') && !line.includes('_conversion_method_template'))
+      .join('\n')
+      .trim();
     return {
       ok: false as const,
       status: 500,
-      error: (result.stderr || result.stdout || 'Sampling failed.').slice(-1000)
+      error: (error || 'Sampling failed.').slice(-1000)
     };
   }
-  const parsed = JSON.parse(result.stdout) as { prompt: string; text: string };
+  const parsed = JSON.parse(result.stdout) as { prompt: string; text: string; vocabSize?: number };
   return { ok: true as const, ...parsed, checkpoint: input.checkpoint };
 }
 

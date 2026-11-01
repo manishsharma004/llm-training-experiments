@@ -173,6 +173,36 @@ def encode(text: str) -> list[int]:
     return ids
 
 
+def encode_bytes(text: str) -> list[int]:
+    """The earlier checkpoints stored one UTF-8 byte per token."""
+
+    return list(text.encode("utf-8"))
+
+
+def decode_bytes(ids: list[int]) -> str:
+    raw = bytes(index for index in (int(token_id) for token_id in ids) if 0 <= index < 256)
+    return raw.decode("utf-8", errors="replace")
+
+
+def encode_for_vocab(text: str, vocab_size: int) -> list[int]:
+    """Encode with the table the checkpoint was trained on."""
+
+    ids = encode_bytes(text) if vocab_size <= 256 else encode(text)
+    overflow = next((token_id for token_id in ids if token_id >= vocab_size), None)
+    if overflow is not None:
+        raise ValueError(
+            f"This checkpoint has a vocabulary of {vocab_size}. "
+            f"The prompt needs id {overflow}, which that table does not contain."
+        )
+    return ids
+
+
+def decode_for_vocab(ids: list[int], vocab_size: int) -> str:
+    if vocab_size <= 256:
+        return decode_bytes(ids)
+    return decode(ids)
+
+
 def decode(ids: list[int]) -> str:
     chars: list[str] = []
     for token_id in ids:

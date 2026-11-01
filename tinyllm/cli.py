@@ -199,7 +199,7 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
 
 
 def cmd_sample(args: argparse.Namespace) -> int:
-    text = complete(
+    result = complete(
         Path(args.ckpt),
         args.prompt,
         max_new_tokens=args.max_new_tokens,
@@ -207,9 +207,9 @@ def cmd_sample(args: argparse.Namespace) -> int:
         top_k=args.top_k,
     )
     if args.json:
-        print(json.dumps({"prompt": args.prompt, "text": text}))
+        print(json.dumps(result))
     else:
-        print(text)
+        print(result["text"])
     return 0
 
 

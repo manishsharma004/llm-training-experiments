@@ -18,7 +18,7 @@
   let checkpoints = $state<{ path: string }[]>([]);
   let pending = $state(false);
   let error = $state('');
-  let samples = $state<{ checkpoint: string; text: string; prompt: string }[]>([]);
+  let samples = $state<{ checkpoint: string; text: string; prompt: string; vocabSize?: number; error?: string }[]>([]);
 
   const probs = $derived(distribution(lab.temperature));
   const greedy = $derived(distribution(0));
@@ -47,7 +47,7 @@
     pending = true;
     samples = [];
     try {
-      const rows = await Promise.all(
+      samples = await Promise.all(
         checkpoints.map(async (row) => {
           const response = await fetch('/api/sample', {
             method: 'POST',
@@ -61,11 +61,17 @@
             })
           });
           const body = await response.json();
-          if (!response.ok) throw new Error(body.error ?? 'Sample failed');
-          return body as { checkpoint: string; text: string; prompt: string };
+          if (!response.ok) {
+            return {
+              checkpoint: row.path,
+              prompt,
+              text: '',
+              error: String(body.error ?? 'Sample failed')
+            };
+          }
+          return body as { checkpoint: string; text: string; prompt: string; vocabSize?: number };
         })
       );
-      samples = rows;
     } catch (caught) {
       error = caught instanceof Error ? caught.message : 'Sample failed';
     } finally {
@@ -122,7 +128,7 @@
   <div class="row">
     <button class="btn ghost" onclick={() => (prompt = 'The lighthouse lamp is')}>Prose probe</button>
     <button class="btn ghost" onclick={() => (prompt = 'Question: What is the lighthouse lamp?\nAnswer:')}>Question probe</button>
-    <label class="field">New bytes
+    <label class="field">New tokens
       <input type="number" min="1" max="80" bind:value={maxNewTokens} />
     </label>
     <label class="field">Top-k (0 off)
@@ -139,7 +145,14 @@
   {#each samples as sample}
     <article class="probe">
       <strong>{sample.checkpoint}</strong>
-      <div><em>{sample.prompt}</em>{sample.text.slice(sample.prompt.length)}</div>
+      {#if sample.vocabSize === 256}
+        <p class="note">This file uses the earlier 256-byte vocabulary, so the prompt is encoded as bytes.</p>
+      {/if}
+      {#if sample.error}
+        <p class="warn">{sample.error}</p>
+      {:else}
+        <div><em>{sample.prompt}</em>{sample.text.slice(sample.prompt.length)}</div>
+      {/if}
     </article>
   {/each}
 </section>
