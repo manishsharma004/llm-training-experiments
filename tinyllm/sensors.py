@@ -161,6 +161,15 @@ class GpuMeter:
             self.process.raise_peak(process_vram_peak_bytes)
         return reading
 
+    def skip(self, seconds: float) -> None:
+        """Drop a wall-clock gap so a paused job does not count that wait as training time or energy."""
+
+        if seconds <= 0:
+            return
+        self.started += seconds
+        if self._previous_time is not None:
+            self._previous_time += seconds
+
     def summary(self) -> dict:
         temperatures = {}
         for label, stat in self.temperatures.items():

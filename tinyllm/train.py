@@ -8,7 +8,9 @@ can condition on the question.
 
 from __future__ import annotations
 
+import json
 import math
+import os
 import time
 from pathlib import Path
 
@@ -77,6 +79,53 @@ def _probe(model: TinyLM, prompts: list[str], device: torch.device) -> list[dict
     return rows
 
 
+def _train_from_dict(data: dict) -> TrainConfig:
+    fields = TrainConfig.__dataclass_fields__
+    cfg = TrainConfig(**{key: data[key] for key in fields if key in data})
+    cfg.validate()
+    return cfg
+
+
+def _read_command(status_path: Path | None) -> str:
+    """`control.json` beside the status file is `run` or `pause`. Missing means run."""
+
+    if status_path is None:
+        return "run"
+    path = status_path.parent / "control.json"
+    if not path.exists():
+        return "run"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return "run"
+    command = payload.get("command") if isinstance(payload, dict) else None
+    return command if command in {"run", "pause"} else "run"
+
+
+def _move_optimizer(optimizer: torch.optim.Optimizer, device: torch.device) -> None:
+    for state in optimizer.state.values():
+        for key, value in list(state.items()):
+            if torch.is_tensor(value):
+                state[key] = value.to(device)
+
+
+def _load_torch(path: Path, map_location: str | torch.device) -> dict:
+    try:
+        return torch.load(path, map_location=map_location, weights_only=False)
+    except TypeError:
+        return torch.load(path, map_location=map_location)
+
+
+def _restore_rng(blob: dict, device: torch.device) -> None:
+    rng = blob.get("rng")
+    if torch.is_tensor(rng):
+        torch.set_rng_state(rng.detach().cpu())
+    cuda_rng = blob.get("cuda_rng")
+    if device.type == "cuda" and cuda_rng:
+        states = [state.detach().cpu() if torch.is_tensor(state) else state for state in cuda_rng]
+        torch.cuda.set_rng_state_all(states)
+
+
 def _run(
     *,
     phase: str,
@@ -91,29 +140,41 @@ def _run(
     val_stream: torch.Tensor | None = None,
     examples: list[dict[str, str]] | None = None,
     data_source: str = "harbor corpus",
+    start_step: int = 1,
+    optimizer: torch.optim.Optimizer | None = None,
+    metrics: list[dict] | None = None,
+    tokens_trained: int = 0,
+    tokens_seen: int = 0,
+    probes: list[dict[str, str]] | None = None,
+    elapsed_base: float = 0.0,
+    follow: dict | None = None,
 ) -> dict:
     device, device_info = resolve(device_preference)
     model.to(device)
     model.train()
     device_label = device_info.get("name") or device.type
     parameter_count = sum(parameter.numel() for parameter in model.parameters())
-    optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=train_config.learning_rate,
-        weight_decay=train_config.weight_decay,
-        betas=(0.9, 0.95),
-    )
-    if stream is None:
+    if optimizer is None:
+        optimizer = torch.optim.AdamW(
+            model.parameters(),
+            lr=train_config.learning_rate,
+            weight_decay=train_config.weight_decay,
+            betas=(0.9, 0.95),
+        )
+    if stream is None and phase == "pretrain":
         stream = encode_corpus(prose_corpus(train_config.corpus_repeats))
-    if examples is None:
+    if examples is None and phase == "finetune":
         examples = finetune_examples()
-    metrics: list[dict] = []
+    if metrics is None:
+        metrics = []
     last_loss = float(init_loss) if init_loss is not None else math.nan
-    probes: list[dict[str, str]] = []
-    tokens_trained = 0
-    tokens_seen = 0
+    if probes is None:
+        probes = []
     run_started = time.perf_counter()
     meter = GpuMeter.open()
+    val_loss = None
+    tokens_per_sec = 0.0
+    resume_file = status_path.parent / "resume.pt" if status_path is not None else None
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(device)
 
@@ -129,7 +190,81 @@ def _run(
 
     compute = compute_report()
 
-    for step in range(1, train_config.steps + 1):
+    def elapsed_now() -> float:
+        return elapsed_base + (time.perf_counter() - run_started)
+
+    def save_resume(step: int) -> None:
+        if resume_file is None or status_path is None:
+            return
+        payload = {
+            "model": model.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "model_config": model_config.to_dict(),
+            "train_config": train_config.__dict__.copy(),
+            "phase": phase,
+            "step": step,
+            "metrics": metrics,
+            "probes": probes,
+            "tokens_trained": tokens_trained,
+            "tokens_seen": tokens_seen,
+            "last_loss": last_loss,
+            "elapsed_s": elapsed_now(),
+            "rng": torch.get_rng_state(),
+            "cuda_rng": torch.cuda.get_rng_state_all() if device.type == "cuda" else None,
+            "data_source": data_source,
+            "out": str(out),
+            "status_path": str(status_path),
+            "device_preference": device_preference,
+            "follow": follow,
+        }
+        temporary = resume_file.with_suffix(".tmp")
+        torch.save(payload, temporary)
+        os.replace(temporary, resume_file)
+
+    def wait_if_paused(step: int) -> None:
+        nonlocal run_started
+        if status_path is None or step >= train_config.steps:
+            return
+        if _read_command(status_path) != "pause":
+            return
+        save_resume(step)
+        paused_at = time.perf_counter()
+        write_status(
+            status_path,
+            {
+                "state": "paused",
+                "phase": phase,
+                "step": step,
+                "totalSteps": train_config.steps,
+                "loss": last_loss,
+                "lr": lr,
+                "metrics": _combined_metrics(status_path, metrics, phase),
+                "probes": probes,
+                "checkpoint": str(out),
+                "device": device_label,
+                "arch": device_info.get("arch"),
+                "parameters": parameter_count,
+                "backend": device_info.get("backend"),
+                "precision": "fp32",
+                "tokensPerSec": round(tokens_per_sec, 1),
+                "tokensTrained": tokens_trained,
+                "tokensSeen": tokens_seen,
+                "elapsedS": round(elapsed_now(), 3),
+                "dataSource": data_source,
+                "vocabSize": model_config.vocab_size,
+                "valLoss": val_loss,
+                "compute": compute,
+                "message": f"Paused after step {step}. Resume continues at step {step + 1}.",
+            },
+        )
+        while _read_command(status_path) == "pause":
+            time.sleep(0.2)
+        held = time.perf_counter() - paused_at
+        run_started += held
+        if meter is not None:
+            meter.skip(held)
+
+    for step in range(start_step, train_config.steps + 1):
         lr = learning_rate(
             step,
             train_config.steps,
@@ -207,14 +342,17 @@ def _run(
                     "tokensPerSec": round(tokens_per_sec, 1),
                     "tokensTrained": tokens_trained,
                     "tokensSeen": tokens_seen,
-                    "elapsedS": round(time.perf_counter() - run_started, 3),
+                    "elapsedS": round(elapsed_now(), 3),
                     "dataSource": data_source,
                     "vocabSize": model_config.vocab_size,
                     "valLoss": val_loss,
                     "compute": compute,
                 },
             )
+        wait_if_paused(step)
 
+    if resume_file is not None and resume_file.exists():
+        resume_file.unlink()
     save_checkpoint(out, model, model_config, train_config, train_config.steps, last_loss, phase)
     summary = {
         "state": "done",
@@ -233,7 +371,7 @@ def _run(
         "tokensPerSec": round(tokens_per_sec, 1),
         "tokensTrained": tokens_trained,
         "tokensSeen": tokens_seen,
-        "elapsedS": round(time.perf_counter() - run_started, 3),
+        "elapsedS": round(elapsed_now(), 3),
         "dataSource": data_source,
         "vocabSize": model_config.vocab_size,
         "valLoss": val_loss,
@@ -266,6 +404,7 @@ def pretrain(
     status_path: Path | None = None,
     device_preference: str = "cpu",
     data_dir: Path | None = None,
+    follow: dict | None = None,
 ) -> dict:
     _set_seed(train_config.seed)
     model = TinyLM(model_config)
@@ -289,7 +428,87 @@ def pretrain(
         stream=stream,
         val_stream=val_stream,
         data_source=source,
+        follow=follow,
     )
+
+
+def continue_run(
+    blob_path: Path,
+    status_path: Path | None = None,
+    device_preference: str | None = None,
+) -> dict:
+    """Load the step saved at pause and continue the same phase from the next step."""
+
+    blob = _load_torch(blob_path, "cpu")
+    model_config = ModelConfig.from_dict(blob["model_config"])
+    train_config = _train_from_dict(blob["train_config"])
+    phase = str(blob["phase"])
+    chosen_device = device_preference or str(blob.get("device_preference") or "cpu")
+    status = status_path
+    if status is None and blob.get("status_path"):
+        status = Path(str(blob["status_path"]))
+    model = TinyLM(model_config)
+    model.load_state_dict(blob["model"])
+    device, _info = resolve(chosen_device)
+    model.to(device)
+    model.train()
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=train_config.learning_rate,
+        weight_decay=train_config.weight_decay,
+        betas=(0.9, 0.95),
+    )
+    optimizer.load_state_dict(blob["optimizer"])
+    _move_optimizer(optimizer, device)
+    _restore_rng(blob, device)
+
+    source = str(blob.get("data_source") or "")
+    stream = None
+    val_stream = None
+    examples = None
+    if phase == "pretrain" and source.endswith("train.bin"):
+        stream = _load_bin(Path(source))
+        val_path = Path(source).with_name("val.bin")
+        if val_path.exists():
+            val_stream = _load_bin(val_path)
+    elif phase == "finetune" and source.endswith(".jsonl"):
+        examples = _load_sft(Path(source))
+
+    summary = _run(
+        phase=phase,
+        model=model,
+        model_config=model_config,
+        train_config=train_config,
+        out=Path(str(blob["out"])),
+        status_path=status,
+        init_loss=None if blob.get("last_loss") is None else float(blob["last_loss"]),
+        device_preference=chosen_device,
+        stream=stream,
+        val_stream=val_stream,
+        examples=examples,
+        data_source=source or "harbor corpus",
+        start_step=int(blob["step"]) + 1,
+        optimizer=optimizer,
+        metrics=list(blob.get("metrics") or []),
+        tokens_trained=int(blob.get("tokens_trained") or 0),
+        tokens_seen=int(blob.get("tokens_seen") or 0),
+        probes=list(blob.get("probes") or []),
+        elapsed_base=float(blob.get("elapsed_s") or 0.0),
+        follow=blob.get("follow") if isinstance(blob.get("follow"), dict) else None,
+    )
+    saved_follow = blob.get("follow") if isinstance(blob.get("follow"), dict) else None
+    if saved_follow and summary.get("state") == "done" and phase == "pretrain":
+        finetune_config = _train_from_dict({**train_config.__dict__, **saved_follow})
+        sft_path = Path(saved_follow["sft"]) if saved_follow.get("sft") else None
+        return finetune(
+            Path(saved_follow["init"]),
+            finetune_config,
+            Path(saved_follow["out"]),
+            status,
+            device_preference=chosen_device,
+            sft_path=sft_path,
+        )
+    return summary
 
 
 def finetune(

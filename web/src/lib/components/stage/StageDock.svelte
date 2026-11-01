@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { page } from '$app/state';
   import { ensureTokenizer, tokenizerState } from '#lib/tokenizer.svelte.ts';
   import { lab } from '#lib/lab.svelte.ts';
   import { pickRun } from '#lib/pickRun.ts';
+  import { defaultStage, readStore, sanitizeStage, stageKey, writeStore, writeStoreSoon, type StageSnapshot } from '#lib/persist.ts';
   import { pauseSim, setSpeed, sim, toggleSim } from '#lib/sim.svelte.ts';
   import { buildScene } from '#lib/simulate.ts';
   import type { RunStatus } from '#lib/types.ts';
@@ -53,14 +54,81 @@
   const path = $derived(page.url.pathname);
 
   let routed = '';
-  $effect(() => {
-    if (routed === path) return;
-    routed = path;
-    sim.time = 0;
+  let stageReady = $state(false);
+  let loadTicket = 0;
+  const stageMemory = new Map<string, StageSnapshot>();
+
+  function applyStage(snap: StageSnapshot) {
     sim.playing = false;
-    if (path === '/architecture') mode = 'forward';
-    else if (path === '/train') mode = 'step';
-    else if (path === '/finetune') mode = 'mask';
+    sim.time = snap.time;
+    sim.speed = snap.speed;
+    mode = snap.mode;
+    filter = snap.filter;
+    layer = snap.layer;
+    head = snap.head;
+    query = snap.query;
+    exploded = snap.exploded;
+  }
+
+  function captureStage(pathname: string): StageSnapshot {
+    return sanitizeStage(pathname, {
+      time: sim.time,
+      speed: sim.speed,
+      mode,
+      filter,
+      layer,
+      head,
+      query,
+      exploded
+    });
+  }
+
+  $effect(() => {
+    const next = path;
+    if (routed === next) return;
+    const previous = routed;
+    const ticket = ++loadTicket;
+    stageReady = false;
+    untrack(() => {
+      if (previous) {
+        const snap = captureStage(previous);
+        stageMemory.set(previous, snap);
+        void writeStore(stageKey(previous), snap);
+      }
+    });
+    routed = next;
+    const cached = stageMemory.get(next);
+    if (cached) {
+      applyStage(cached);
+      stageReady = true;
+      return;
+    }
+    applyStage(defaultStage(next));
+    void readStore(stageKey(next)).then((saved) => {
+      if (ticket !== loadTicket || routed !== next) return;
+      if (saved) {
+        const snap = sanitizeStage(next, saved);
+        stageMemory.set(next, snap);
+        applyStage(snap);
+      }
+      stageReady = true;
+    });
+  });
+
+  $effect(() => {
+    if (!stageReady || routed !== path) return;
+    const snap = sanitizeStage(path, {
+      time: sim.time,
+      speed: sim.speed,
+      mode,
+      filter,
+      layer,
+      head,
+      query,
+      exploded
+    });
+    stageMemory.set(path, snap);
+    writeStoreSoon(stageKey(path), snap);
   });
 
   function count(value: number | undefined | null) {
@@ -95,7 +163,7 @@
         .then((body) => {
           const runs = (body.runs ?? []) as RunStatus[];
           const wanted = path === '/finetune' ? 'finetune' : 'pretrain';
-          run = pickRun(runs, wanted) ?? (path === '/train' || path === '/finetune' ? null : runs.find((item) => item.state === 'running') ?? null);
+          run = pickRun(runs, wanted) ?? (path === '/train' || path === '/finetune' ? null : runs.find((item) => item.state === 'running' || item.state === 'paused') ?? null);
         })
         .catch(() => undefined);
     };
@@ -163,7 +231,7 @@
     });
   });
 
-  const showLive = $derived(path === '/train' || path === '/finetune' || run?.state === 'running');
+  const showLive = $derived(path === '/train' || path === '/finetune' || run?.state === 'running' || run?.state === 'paused');
   const modes = $derived(
     path === '/architecture'
       ? [

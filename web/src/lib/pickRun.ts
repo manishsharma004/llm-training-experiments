@@ -3,7 +3,7 @@ import type { RunStatus } from '#lib/types.ts';
 /** Prefer a live run, then the longest book-corpus run, then the newest match. */
 export function pickRun(runs: RunStatus[], phase: string): RunStatus | null {
   const matching = runs.filter((item) => item.phase === phase);
-  const running = matching.find((item) => item.state === 'running');
+  const running = matching.find((item) => item.state === 'running' || item.state === 'paused');
   if (running) return running;
   const corpus = matching
     .filter((item) => item.id === 'corpus' || String(item.dataSource ?? '').includes('corpus'))

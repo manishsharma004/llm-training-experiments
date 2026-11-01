@@ -1,5 +1,5 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 export type Phase = 'pretrain' | 'finetune' | 'pipeline';
@@ -87,7 +87,7 @@ export function loadRun(root: string, id: string) {
   if (id === 'corpus') {
     const status = readJson(path.join(runsDir(root), 'corpus-status.json'));
     if (!status) return null;
-    return presentRun('corpus', status);
+    return { ...presentRun('corpus', status), pid: 0 };
   }
   const dir = path.join(runsDir(root), id);
   const status = readJson(path.join(dir, 'status.json'));
@@ -96,9 +96,20 @@ export function loadRun(root: string, id: string) {
   const pid = Number(meta?.pid ?? 0);
   let state = String(status?.state ?? 'unknown');
   let message = typeof status?.message === 'string' ? status.message : '';
-  if ((state === 'running' || state === 'starting') && pid && !alive(pid)) {
+  const resumeReady = existsSync(path.join(dir, 'resume.pt'));
+  const processAlive = Boolean(pid) && alive(pid);
+  if ((state === 'running' || state === 'starting') && pid && !processAlive) {
+    if (resumeReady) {
+      state = 'paused';
+      message = `Paused after step ${status?.step ?? '?'}. The process stopped. Resume reloads that step.`;
+    } else {
+      state = 'error';
+      message = message || 'The training process stopped before writing a final status.';
+    }
+  }
+  if (state === 'paused' && !processAlive && !resumeReady) {
     state = 'error';
-    message = message || 'The training process stopped before writing a final status.';
+    message = 'The training process stopped and the paused step was not saved.';
   }
   return { ...presentRun(id, status ?? {}, message), state, message, pid };
 }
@@ -173,11 +184,130 @@ function checkpointAllowed(root: string, rel: string): string | null {
   return abs;
 }
 
+function writeControl(dir: string, command: 'run' | 'pause') {
+  const file = path.join(dir, 'control.json');
+  const temporary = `${file}.tmp`;
+  writeFileSync(temporary, JSON.stringify({ command }));
+  renameSync(temporary, file);
+}
+
+function watchChild(dir: string, statusPath: string, child: ChildProcess) {
+  const stderrChunks: Buffer[] = [];
+  child.stderr?.on('data', (chunk: Buffer) => {
+    stderrChunks.push(chunk);
+  });
+  child.on('exit', (code) => {
+    const metaNow = readJson(path.join(dir, 'meta.json'));
+    if (Number(metaNow?.pid ?? 0) !== child.pid) return;
+    const current = readJson(statusPath) ?? {};
+    const text = Buffer.concat(stderrChunks).toString('utf8').trim();
+    if (text) writeFileSync(path.join(dir, 'stderr.txt'), text);
+    if (code === 0 && current.state === 'done') return;
+    if (existsSync(path.join(dir, 'resume.pt')) && current.state !== 'done') {
+      const step = current.step ?? '?';
+      writeFileSync(
+        statusPath,
+        JSON.stringify(
+          {
+            ...current,
+            state: 'paused',
+            message:
+              typeof current.message === 'string' && current.message
+                ? current.message
+                : `Paused after step ${step}. Resume reloads that step and continues.`
+          },
+          null,
+          2
+        )
+      );
+      return;
+    }
+    writeFileSync(
+      statusPath,
+      JSON.stringify(
+        {
+          ...current,
+          state: code === 0 ? 'done' : 'error',
+          message: code === 0 ? '' : text.slice(-2000) || `Training exited with code ${code}`
+        },
+        null,
+        2
+      )
+    );
+  });
+}
+
+export function controlRun(id: string, command: string) {
+  const root = repoRoot();
+  if (!/^[A-Za-z0-9._-]+$/.test(id) || id === 'corpus') {
+    return { ok: false as const, status: 404, error: 'Unknown run.' };
+  }
+  const run = loadRun(root, id);
+  if (!run) return { ok: false as const, status: 404, error: 'Unknown run.' };
+  const dir = path.join(runsDir(root), id);
+  if (command === 'pause') {
+    if (run.state !== 'running') {
+      return { ok: false as const, status: 409, error: 'Pause applies to a run that is on a step.', run };
+    }
+    const pid = Number(run.pid ?? 0);
+    if (!pid || !alive(pid)) {
+      return { ok: false as const, status: 409, error: 'The training process is not running.', run };
+    }
+    writeControl(dir, 'pause');
+    return { ok: true as const, run };
+  }
+  if (command !== 'resume') {
+    return { ok: false as const, status: 400, error: 'Command must be pause or resume.' };
+  }
+  if (run.state !== 'paused') {
+    return { ok: false as const, status: 409, error: 'Resume continues a paused run.', run };
+  }
+  const pid = Number(run.pid ?? 0);
+  if (pid && alive(pid)) {
+    writeControl(dir, 'run');
+    return { ok: true as const, run };
+  }
+  const blob = path.join(dir, 'resume.pt');
+  if (!existsSync(blob)) {
+    return { ok: false as const, status: 409, error: 'The paused step was not saved, so it cannot resume.', run };
+  }
+  const meta = readJson(path.join(dir, 'meta.json')) ?? {};
+  const device = meta.device === 'cpu' || meta.device === 'gpu' || meta.device === 'auto' ? String(meta.device) : 'auto';
+  const statusPath = path.join(dir, 'status.json');
+  writeControl(dir, 'run');
+  const current = readJson(statusPath) ?? {};
+  writeFileSync(
+    statusPath,
+    JSON.stringify({ ...current, state: 'running', message: 'Resuming from the saved step.' }, null, 2)
+  );
+  const env = { ...process.env, PYTHONUNBUFFERED: '1' } as NodeJS.ProcessEnv;
+  if (meta.gfxOverride) env.HSA_OVERRIDE_GFX_VERSION = '10.3.0';
+  const child = spawn(pythonBin(root), ['-m', 'tinyllm.cli', 'resume', '--blob', blob, '--status', statusPath, '--device', device], {
+    cwd: root,
+    env
+  });
+  writeFileSync(
+    path.join(dir, 'meta.json'),
+    JSON.stringify({ ...meta, pid: child.pid, resumedAt: new Date().toISOString() }, null, 2)
+  );
+  watchChild(dir, statusPath, child);
+  return {
+    ok: true as const,
+    run: { ...run, state: 'running', message: 'Resuming from the saved step.' }
+  };
+}
+
 export function startRun(request: RunRequest) {
   const root = repoRoot();
-  const active = latestRun(root);
-  if (active && active.state === 'running') {
-    return { ok: false as const, status: 409, error: 'A training run is already in progress.', run: active };
+  const busy = listRuns(root).find(
+    (run) => run && run.id !== 'corpus' && (run.state === 'running' || run.state === 'paused' || run.state === 'starting')
+  );
+  if (busy) {
+    const error =
+      busy.state === 'paused'
+        ? 'A training run is paused. Resume it before starting another.'
+        : 'A training run is already in progress.';
+    return { ok: false as const, status: 409, error, run: busy };
   }
 
   const phase = request.phase;
@@ -301,7 +431,6 @@ export function startRun(request: RunRequest) {
     )
   );
 
-  const stderrChunks: Buffer[] = [];
   const env = { ...process.env, PYTHONUNBUFFERED: '1' } as NodeJS.ProcessEnv;
   if (request.gfxOverride) {
     env.HSA_OVERRIDE_GFX_VERSION = '10.3.0';
@@ -310,32 +439,15 @@ export function startRun(request: RunRequest) {
     cwd: root,
     env
   });
-  child.stderr?.on('data', (chunk: Buffer) => {
-    stderrChunks.push(chunk);
-  });
   writeFileSync(
     path.join(dir, 'meta.json'),
-    JSON.stringify({ pid: child.pid, phase, startedAt: new Date().toISOString() }, null, 2)
+    JSON.stringify(
+      { pid: child.pid, phase, device, gfxOverride: Boolean(request.gfxOverride), startedAt: new Date().toISOString() },
+      null,
+      2
+    )
   );
-
-  child.on('exit', (code) => {
-    const current = readJson(statusPath) ?? {};
-    const text = Buffer.concat(stderrChunks).toString('utf8').trim();
-    if (text) writeFileSync(path.join(dir, 'stderr.txt'), text);
-    if (code === 0 && current.state === 'done') return;
-    writeFileSync(
-      path.join(dir, 'status.json'),
-      JSON.stringify(
-        {
-          ...current,
-          state: code === 0 ? 'done' : 'error',
-          message: code === 0 ? '' : text.slice(-2000) || `Training exited with code ${code}`
-        },
-        null,
-        2
-      )
-    );
-  });
+  watchChild(dir, statusPath, child);
 
   return { ok: true as const, id };
 }

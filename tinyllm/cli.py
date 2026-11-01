@@ -23,7 +23,7 @@ from tinyllm.checkpoint import summarize
 from tinyllm.sample import complete
 from tinyllm.status import write_status
 from tinyllm.tokenizer import describe
-from tinyllm.train import finetune, pretrain
+from tinyllm.train import continue_run, finetune, pretrain
 
 
 def _model_from_args(args: argparse.Namespace) -> ModelConfig:
@@ -158,6 +158,27 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
     try:
         pre_cfg = _train_from_args(args, args.steps)
         data_dir = Path(args.data) if args.data else None
+        ft_cfg = _train_from_args(args, args.finetune_steps)
+        ft_cfg.warmup_steps = min(ft_cfg.warmup_steps, max(0, args.finetune_steps // 10))
+        # Finetuning starts from useful weights, so keep the step size at or below 1e-3.
+        if ft_cfg.learning_rate > 1e-3:
+            ft_cfg.learning_rate = 1e-3
+        sft_file = Path(args.sft) if getattr(args, "sft", "") else None
+        follow = {
+            "steps": ft_cfg.steps,
+            "batch_size": ft_cfg.batch_size,
+            "learning_rate": ft_cfg.learning_rate,
+            "min_learning_rate": ft_cfg.min_learning_rate,
+            "weight_decay": ft_cfg.weight_decay,
+            "warmup_steps": ft_cfg.warmup_steps,
+            "grad_clip": ft_cfg.grad_clip,
+            "seed": ft_cfg.seed,
+            "log_every": ft_cfg.log_every,
+            "sample_every": ft_cfg.sample_every,
+            "out": str(sft_path),
+            "sft": str(sft_file) if sft_file else "",
+            "init": str(pre_path),
+        }
         pre_summary = pretrain(
             model_cfg,
             pre_cfg,
@@ -165,13 +186,8 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
             status,
             device_preference=args.device,
             data_dir=data_dir,
+            follow=follow,
         )
-        ft_cfg = _train_from_args(args, args.finetune_steps)
-        ft_cfg.warmup_steps = min(ft_cfg.warmup_steps, max(0, args.finetune_steps // 10))
-        # Finetuning starts from useful weights, so keep the step size at or below 1e-3.
-        if ft_cfg.learning_rate > 1e-3:
-            ft_cfg.learning_rate = 1e-3
-        sft_file = Path(args.sft) if getattr(args, "sft", "") else None
         ft_summary = finetune(
             pre_path,
             ft_cfg,
@@ -196,6 +212,24 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
             indent=2,
         )
     )
+    return 0
+
+
+def cmd_resume(args: argparse.Namespace) -> int:
+    """Continue a paused run from the saved step. The optimizer state comes with it."""
+
+    status = Path(args.status) if args.status else None
+    try:
+        summary = continue_run(
+            Path(args.blob),
+            status,
+            device_preference=args.device or None,
+        )
+    except Exception as exc:
+        if status:
+            write_status(status, {"state": "error", "phase": "resume", "message": str(exc)})
+        raise
+    _print_summary(summary)
     return 0
 
 
@@ -296,6 +330,12 @@ def build_parser() -> argparse.ArgumentParser:
     sample.add_argument("--top-k", type=int, default=0)
     sample.add_argument("--json", action="store_true")
     sample.set_defaults(func=cmd_sample)
+
+    resume = sub.add_parser("resume", help="Continue a paused run from runs/<id>/resume.pt.")
+    resume.add_argument("--blob", required=True)
+    resume.add_argument("--status", default="")
+    resume.add_argument("--device", default="", choices=("", "auto", "cpu", "gpu"))
+    resume.set_defaults(func=cmd_resume)
 
     files = sub.add_parser("checkpoints", help="Print phase, steps, loss, and vocabulary for each checkpoint.")
     files.add_argument("--root", default="")

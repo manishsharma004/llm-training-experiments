@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { untrack } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { browser } from '$app/env';
   import LossChart from './LossChart.svelte';
   import { pickRun } from '#lib/pickRun.ts';
+  import { readStore, sanitizeBench, writeStoreSoon } from '#lib/persist.ts';
   import type { RunStatus } from '#lib/types.ts';
 
   let {
@@ -28,8 +29,12 @@
   let run = $state<RunStatus | null>(null);
   let error = $state('');
   let polling = $state(false);
+  let remember = $state(false);
+  let pollGen = 0;
 
   const running = $derived(run?.state === 'running');
+  const paused = $derived(run?.state === 'paused');
+  const occupied = $derived(running || paused);
 
   function megabytes(bytes: number) {
     return (bytes / (1024 * 1024)).toFixed(0);
@@ -38,15 +43,37 @@
   const perplexity = $derived(latestLoss && latestLoss > 0 ? Math.exp(latestLoss) : null);
 
   async function refresh(id: string) {
+    const gen = ++pollGen;
     const response = await fetch(`/api/runs/${id}`);
     const body = await response.json();
+    if (gen !== pollGen) return;
     if (body.run) run = body.run as RunStatus;
-    if (run?.state === 'running') {
+    if (run?.state === 'running' || run?.state === 'paused') {
       polling = true;
-      setTimeout(() => refresh(id), 800);
+      setTimeout(() => {
+        if (gen === pollGen) void refresh(id);
+      }, 800);
     } else {
       polling = false;
     }
+  }
+
+  async function control(command: 'pause' | 'resume') {
+    if (!run?.id) return;
+    error = '';
+    const response = await fetch(`/api/runs/${run.id}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ command })
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      error = body.error ?? 'Could not update the run.';
+      if (body.run) run = body.run as RunStatus;
+      return;
+    }
+    if (body.run) run = body.run as RunStatus;
+    if (run?.id) void refresh(run.id);
   }
 
   async function start() {
@@ -105,9 +132,29 @@
         const match = pickRun(runs, phase);
         if (!match?.id) return;
         run = match;
-        if (match.state === 'running') refresh(match.id);
+        if (match.state === 'running' || match.state === 'paused') refresh(match.id);
       })
       .catch(() => undefined);
+  });
+
+  onMount(async () => {
+    const saved = sanitizeBench(await readStore(`bench:${phase}`));
+    if (saved) {
+      stepCount = saved.stepCount;
+      ftCount = saved.ftCount;
+      rate = saved.rate;
+      batchSize = saved.batchSize;
+      seed = saved.seed;
+      deviceChoice = saved.deviceChoice;
+      gfxOverride = saved.gfxOverride;
+    }
+    remember = true;
+  });
+
+  $effect(() => {
+    const snap = { stepCount, ftCount, rate, batchSize, seed, deviceChoice, gfxOverride };
+    if (!remember) return;
+    writeStoreSoon(`bench:${phase}`, snap);
   });
 </script>
 
@@ -150,10 +197,18 @@
     <label class="field">Seed
       <input type="number" min="0" bind:value={seed} />
     </label>
-    <button class="btn" onclick={start} disabled={running}>
+    <button class="btn" onclick={start} disabled={occupied}>
       {running ? 'Training' : phase === 'pipeline' ? 'Run both phases' : phase === 'finetune' ? 'Finetune' : 'Pretrain'}
     </button>
+    {#if running}
+      <button class="btn ghost" onclick={() => control('pause')}>Pause</button>
+    {:else if paused}
+      <button class="btn ghost" onclick={() => control('resume')}>Resume</button>
+    {/if}
   </div>
+  {#if paused}
+    <p class="note">Paused after step {run?.step ?? 0}. Resume continues at step {(run?.step ?? 0) + 1}, with the optimizer kept as it was.</p>
+  {/if}
   {#if error}<p class="warn">{error}</p>{/if}
   {#if run}
     <div class="stats">

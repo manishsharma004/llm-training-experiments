@@ -1,12 +1,14 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { encodeText } from '#lib/bytes.ts';
+  import { readStore, sanitizeTokenize, writeStoreSoon } from '#lib/persist.ts';
   import { ensureTokenizer, tokenizerState } from '#lib/tokenizer.svelte.ts';
 
   let text = $state('The Old Testament of the King James Version of the Bible');
   let block = $state(16);
   let cursor = $state(0);
   let corpus = $state<{ train_tokens?: number; val_tokens?: number; train_bytes?: number; bytes_per_token?: number; preview?: string; tokenizer?: { vocab_size?: number; merges?: number } } | null>(null);
+  let remember = $state(false);
 
   const tokens = $derived(tokenizerState.ready ? encodeText(text) : []);
   const maxStart = $derived(Math.max(0, tokens.length - 2));
@@ -14,11 +16,24 @@
   const windowTokens = $derived(tokens.slice(start, start + block));
 
   onMount(async () => {
+    const saved = sanitizeTokenize(await readStore('tokenize'));
+    if (saved) {
+      text = saved.text;
+      block = saved.block;
+      cursor = saved.cursor;
+    }
+    remember = true;
     await ensureTokenizer();
     const response = await fetch('/api/data');
     const body = await response.json();
     corpus = body.prepare ?? null;
-    if (typeof corpus?.preview === 'string' && corpus.preview.trim()) text = corpus.preview.slice(0, 280);
+    if (!saved && typeof corpus?.preview === 'string' && corpus.preview.trim()) text = corpus.preview.slice(0, 280);
+  });
+
+  $effect(() => {
+    const snap = { text, block, cursor };
+    if (!remember) return;
+    writeStoreSoon('tokenize', snap);
   });
 
   function step(direction: number) {

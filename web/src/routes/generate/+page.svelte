@@ -4,6 +4,7 @@
   import { lab } from '#lib/lab.svelte.ts';
   import Source from '#lib/components/Source.svelte';
   import { checkpointStory, type CheckpointFact } from '#lib/checkpointStory.ts';
+  import { readStore, sanitizeSample, writeStoreSoon } from '#lib/persist.ts';
 
   const demo = [
     { glyph: 'c', logit: 2.4 },
@@ -22,6 +23,7 @@
   let pending = $state(false);
   let error = $state('');
   let samples = $state<{ checkpoint: string; text: string; prompt: string; vocabSize?: number; error?: string }[]>([]);
+  let remember = $state(false);
 
   const probs = $derived(distribution(lab.temperature));
   const greedy = $derived(distribution(0));
@@ -36,12 +38,25 @@
   }
 
   onMount(async () => {
+    const saved = sanitizeSample(await readStore('sample'));
+    if (saved) {
+      prompt = saved.prompt;
+      maxNewTokens = saved.maxNewTokens;
+      topK = saved.topK;
+    }
+    remember = true;
     const [files, data] = await Promise.all([
       fetch('/api/checkpoints').then((response) => response.json()),
       fetch('/api/data').then((response) => response.json())
     ]);
     checkpoints = files.checkpoints ?? [];
     trainTokens = data.prepare?.train_tokens ?? null;
+  });
+
+  $effect(() => {
+    const snap = { prompt, maxNewTokens, topK };
+    if (!remember) return;
+    writeStoreSoon('sample', snap);
   });
 
   async function sampleAll() {

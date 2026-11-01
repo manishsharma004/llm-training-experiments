@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import RunBench from '#lib/components/RunBench.svelte';
-  import { lab } from '#lib/lab.svelte.ts';
+  import { lab, labHydrated } from '#lib/lab.svelte.ts';
   import { encodeText } from '#lib/bytes.ts';
   import Source from '#lib/components/Source.svelte';
   import { ensureTokenizer, tokenizerState } from '#lib/tokenizer.svelte.ts';
@@ -12,12 +12,16 @@
 
   onMount(async () => {
     await ensureTokenizer();
+    const kept = await labHydrated;
     const response = await fetch('/api/harbor');
     harbor = await response.json();
-    if (harbor && harbor.pairs[0]) {
-      lab.prompt = harbor.pairs[0].prompt;
-      lab.completion = harbor.pairs[0].completion;
+    if (!harbor?.pairs.length) return;
+    if (kept) {
+      index = harbor.pairs.findIndex((pair) => pair.prompt === lab.prompt && pair.completion === lab.completion);
+      return;
     }
+    lab.prompt = harbor.pairs[0].prompt;
+    lab.completion = harbor.pairs[0].completion;
   });
 
   const promptTokens = $derived(tokenizerState.ready ? encodeText(lab.prompt) : []);

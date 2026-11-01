@@ -4,10 +4,42 @@
   import '@fontsource/ibm-plex-sans/400.css';
   import '@fontsource/ibm-plex-sans/500.css';
   import '@fontsource/ibm-plex-mono/400.css';
+  import { onMount } from 'svelte';
   import { page } from '$app/state';
   import StageDock from '#lib/components/stage/StageDock.svelte';
+  import { finishHydration, lab } from '#lib/lab.svelte.ts';
+  import { readStore, sanitizeLab, writeStoreSoon } from '#lib/persist.ts';
 
   let { children } = $props();
+  let remember = $state(false);
+
+  onMount(async () => {
+    let saved = false;
+    try {
+      const snap = sanitizeLab(await readStore('lab'));
+      if (snap) {
+        lab.shape = snap.shape;
+        lab.prompt = snap.prompt;
+        lab.completion = snap.completion;
+        lab.temperature = snap.temperature;
+        saved = true;
+      }
+    } finally {
+      remember = true;
+      finishHydration(saved);
+    }
+  });
+
+  $effect(() => {
+    const snap = {
+      shape: { ...lab.shape },
+      prompt: lab.prompt,
+      completion: lab.completion,
+      temperature: lab.temperature
+    };
+    if (!remember) return;
+    writeStoreSoon('lab', snap);
+  });
 
   const links = [
     ['/', 'Notes', '01'],
