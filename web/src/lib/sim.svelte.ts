@@ -1,5 +1,5 @@
 export const sim = $state({
-  playing: true,
+  playing: false,
   speed: 1,
   time: 0
 });

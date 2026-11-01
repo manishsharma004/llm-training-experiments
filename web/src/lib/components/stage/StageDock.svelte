@@ -57,7 +57,7 @@
     if (routed === path) return;
     routed = path;
     sim.time = 0;
-    sim.playing = true;
+    sim.playing = false;
     if (path === '/architecture') mode = 'forward';
     else if (path === '/train') mode = 'step';
     else if (path === '/finetune') mode = 'mask';

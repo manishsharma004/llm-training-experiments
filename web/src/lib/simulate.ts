@@ -850,7 +850,7 @@ export function buildScene(input: SimInput): Scene {
   if (path === '/architecture' && input.mode === 'stack') {
     return stackScene(input.shape, input.time, input.playing, input.exploded, input.query);
   }
-  if (path === '/architecture') return forwardScene(input.geometry, input.time, true, input.layer, input.head, input.query);
+  if (path === '/architecture') return forwardScene(input.geometry, input.time, input.playing, input.layer, input.head, input.query);
   if (path === '/train' && input.mode === 'loss') {
     return input.metrics.length ? lossScene(input.metrics, input.time) : trainStepScene(input.excerptIds, input.time);
   }
