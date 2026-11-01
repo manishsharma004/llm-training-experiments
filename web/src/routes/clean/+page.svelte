@@ -35,7 +35,7 @@
 <p class="kicker">03 · Clean</p>
 <h1>Decide what is allowed to become training text.</h1>
 <p class="lede">
-  Every drop has a reason. Exact duplicates are removed after normalization, so two copies of the same notes do not get twice the weight.
+  This is the book corpus, not the harbor sample. Every drop has a reason. Exact duplicates are removed after normalization.
   HTML is stripped rather than learned as tags.
 </p>
 

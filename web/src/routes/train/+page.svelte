@@ -27,13 +27,13 @@
   }
 </script>
 
-<p class="kicker">06 · Train</p>
-<h1>Train the million-parameter model on the prepared bytes.</h1>
+<p class="kicker">07 · Train</p>
+<h1>Train on the book token stream.</h1>
 <p class="lede">
   Auto uses a GPU when this PyTorch process can see one, and the CPU otherwise. Choosing GPU on a machine
   where the RX 5500 is not visible stops the run and explains why, instead of silently training on the CPU.
-  The preset stays in fp32: weights, gradients, and AdamW states are about 16MB, which fits in 4GB with room to spare.
-  The stage shows the book stream, the 23 million training bytes, and the finished pass over that stream. The step box starts at 20 so a new run stays short.
+  The preset stays in fp32. The stage shows the book stream and the finished pass over those books.
+  That finished pass used the older byte vocabulary. A new run starts at 20 steps, encodes with the 8192-piece table, and writes checkpoints/pretrain.pt.
 </p>
 
 {#if probeError}<p class="warn">{probeError}</p>{/if}

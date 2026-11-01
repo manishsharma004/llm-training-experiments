@@ -12,7 +12,7 @@ from tinyllm.train import finetune, pretrain
 
 
 def test_pretrain_loss_drops_and_finetune_runs(tmp_path: Path):
-    model = ModelConfig(n_layer=2, n_embd=64, n_head=4, block_size=48, vocab_size=256, mlp_ratio=4)
+    model = ModelConfig(n_layer=2, n_embd=64, n_head=4, block_size=48, mlp_ratio=4)
     train = TrainConfig(
         steps=8,
         batch_size=8,
@@ -68,7 +68,7 @@ def test_full_preset_steps_on_rx5500_when_visible(tmp_path: Path):
         device_preference="gpu",
     )
     assert summary["state"] == "done"
-    assert summary["parameters"] == 1_035_008
+    assert summary["parameters"] == 2_050_816
     assert "5500" in summary["device"]
     assert "gfx1012" in str(summary["arch"])
     compute = summary["compute"]

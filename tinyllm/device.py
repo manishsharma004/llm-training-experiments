@@ -105,7 +105,7 @@ def _preferred_cuda_index(torch_module) -> int:
     return chosen
 
 
-def probe(parameters: int = 1_035_008, batch_size: int = 16, block_size: int = 128) -> dict:
+def probe(parameters: int = 2_050_816, batch_size: int = 16, block_size: int = 128) -> dict:
     """Describe the GPU this process can actually train on."""
 
     pci = scan_pci()
@@ -177,7 +177,7 @@ def probe(parameters: int = 1_035_008, batch_size: int = 16, block_size: int = 1
     info["sensors"] = None if gpu_device is None else read_gpu(gpu_device)
     info["precision"] = "fp32"
     info["precision_reason"] = (
-        "The million-parameter preset plus AdamW is a few tens of megabytes in fp32. "
+        "The book-vocabulary preset plus AdamW is a few tens of megabytes in fp32. "
         "fp32 also avoids half-precision kernels, which are unreliable on gfx1012."
     )
     return info

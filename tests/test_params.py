@@ -14,7 +14,7 @@ def test_default_preset_is_about_one_million_and_matches_the_module():
     assert report["lm_head"] == 0
     assert about_one_million(config)
     # The lab copy quotes this exact default so the UI and the model agree.
-    assert counted == 1_035_008
+    assert counted == 2_050_816
 
 
 def test_weight_tying_shares_the_embedding_storage():

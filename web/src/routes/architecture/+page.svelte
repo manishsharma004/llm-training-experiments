@@ -18,13 +18,13 @@
   }
 </script>
 
-<p class="kicker">05 · Shape</p>
-<h1>Where a million parameters go.</h1>
+<p class="kicker">06 · Shape</p>
+<h1>Where the parameters go.</h1>
 <p class="lede">
   Every number below is a weight matrix the trainer actually allocates. Linear layers have no bias. Each LayerNorm
   has a weight and a bias. The language-model head reuses the token embedding, so its extra cost is zero.
-  The stage beside this page projects the real 128-wide embedding, the attention of one sentence, and this stack.
-  Drag to orbit, scroll to zoom, and click a byte, a weight, or a block.
+  The stage beside this page projects the 8192 token vectors, the attention of one sentence, and this stack.
+  Drag to orbit, scroll to zoom, and click a piece, a weight, or a block.
 </p>
 
 <div class="grid">
@@ -47,17 +47,17 @@
       </label>
       <button class="btn ghost" onclick={reset}>Reset to the preset</button>
     </div>
-    <p class="note">Vocabulary is fixed at 256 because the tokenizer is raw bytes. Head dimension is {headDim}.</p>
+    <p class="note">Vocabulary is fixed at {shape.vocabSize.toLocaleString()} byte-level BPE pieces trained on the books. Head dimension is {headDim}.</p>
     {#if !report.valid}<p class="warn">{report.reason}</p>{/if}
   </section>
   <section class="card">
     <p class="kicker">Total</p>
     <h2>{formatCount(report.total)}</h2>
     <p class="note">
-      {#if report.total >= 800_000 && report.total <= 1_200_000}
-        Inside the one-million band (0.8M–1.2M).
+      {#if report.total === breakdown().total}
+        This is the book-vocabulary preset. The extra parameters, compared with the old 256-byte model, are the larger embedding.
       {:else}
-        Outside the one-million band. The training preset is {formatCount(breakdown().total)}.
+        The training preset is {formatCount(breakdown().total)}.
       {/if}
     </p>
     <div class="meter" aria-hidden="true">

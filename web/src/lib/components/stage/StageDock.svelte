@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { page } from '$app/state';
-  import { encodeBytes, glyphFor, softmax } from '#lib/bytes.ts';
+  import { encodeText, glyphForToken, softmax } from '#lib/bytes.ts';
+  import { ensureTokenizer, tokenizerState } from '#lib/tokenizer.svelte.ts';
   import { lab } from '#lib/lab.svelte.ts';
   import { pickRun } from '#lib/pickRun.ts';
   import type { RunStatus } from '#lib/types.ts';
@@ -61,17 +62,19 @@
     { glyph: 'x', logit: -1.6 }
   ];
 
-  function kindOf(id: number) {
-    if (id === 32 || id === 10) return 'space';
-    if (id >= 48 && id <= 57) return 'digit';
-    if ((id >= 65 && id <= 90) || (id >= 97 && id <= 122)) return 'letter';
+  function kindOfGlyph(glyph: string) {
+    const bare = glyph.replaceAll('␣', '').replaceAll('↵', '').trim();
+    if (!bare) return 'space';
+    if (/^\p{N}+$/u.test(bare)) return 'digit';
+    if (/^\p{L}+$/u.test(bare)) return 'letter';
     return 'other';
   }
 
-  function colorOf(id: number) {
-    if (kindOf(id) === 'letter') return '#c4622d';
-    if (kindOf(id) === 'digit') return '#8d3f16';
-    if (kindOf(id) === 'space') return '#1e4642';
+  function colorOfGlyph(glyph: string) {
+    const kind = kindOfGlyph(glyph);
+    if (kind === 'letter') return '#c4622d';
+    if (kind === 'digit') return '#8d3f16';
+    if (kind === 'space') return '#1e4642';
     return '#8a8175';
   }
 
@@ -80,6 +83,7 @@
   }
 
   onMount(() => {
+    void ensureTokenizer();
     let stop = false;
     const pullGeometry = () => {
       fetch('/api/geometry')
@@ -125,6 +129,7 @@
   });
 
   const scene = $derived.by(() => {
+    void tokenizerState.ready;
     const points: StagePoint[] = [];
     const boxes: StageBox[] = [];
     const segments: StageSegment[] = [];
@@ -197,37 +202,46 @@
       });
       return { points, boxes, segments, caption: 'Red boxes are drop reasons. The pine slab is what stayed.' };
     }
-    if (route === '/prepare') {
+    if (route === '/prepare' || route === '/tokenize') {
       const bytes = data?.excerpt?.bytes ?? [];
       bytes.forEach((id, index) => {
         const angle = index * 0.33;
+        const glyph = glyphForToken(id);
         points.push({
           id: `b${index}`,
           x: Math.cos(angle) * 1.35,
-          y: (id - 128) / 90,
+          y: ((id % 256) - 128) / 90,
           z: Math.sin(angle) * 1.35,
-          color: colorOf(id),
+          color: colorOfGlyph(glyph),
           size: 7,
-          label: glyphFor(id),
-          detail: `Byte ${index} of ${data?.excerpt?.path ?? 'the stream'} is id ${id}. The helix is the start of the training file, ${data?.excerpt?.total?.toLocaleString() ?? '0'} bytes long. Train ${data?.prepare?.train_tokens?.toLocaleString() ?? '—'}, validation ${data?.prepare?.val_tokens?.toLocaleString() ?? '—'}.`
+          label: glyph,
+          detail: `Token ${index} of ${data?.excerpt?.path ?? 'the stream'} is id ${id} (${glyph}). The helix is the start of the book stream, ${data?.excerpt?.total?.toLocaleString() ?? '0'} tokens long. Train ${data?.prepare?.train_tokens?.toLocaleString() ?? '—'}, validation ${data?.prepare?.val_tokens?.toLocaleString() ?? '—'}.`
         });
       });
-      return { points, boxes, segments, caption: 'A helix of the first training bytes. Click one to read its id.' };
+      return {
+        points,
+        boxes,
+        segments,
+        caption: route === '/tokenize'
+          ? 'The first pieces of the book stream. Click one to read the id from the 8192-piece vocabulary.'
+          : 'A helix of the first training tokens. Click one to read its piece.'
+      };
     }
     if (route === '/architecture' && mode === 'cloud') {
       if (!geometry) return { points, boxes, segments, caption: 'Projecting the embedding. This can take a moment the first time PyTorch loads.' };
+      const glyphs = new Map(geometry.points.map((item) => [item.id, item.glyph]));
       for (const point of geometry.points) {
-        if (filter !== 'all' && kindOf(point.id) !== filter) continue;
-        const names = point.neighbors.map((id) => glyphFor(id)).join(' ');
+        if (filter !== 'all' && kindOfGlyph(point.glyph) !== filter) continue;
+        const names = point.neighbors.map((id) => glyphs.get(id) ?? String(id)).join(' ');
         points.push({
           id: `e${point.id}`,
           x: point.x * 2.4,
           y: point.y * 2.4,
           z: point.z * 2.4,
-          color: colorOf(point.id),
+          color: colorOfGlyph(point.glyph),
           size: 6,
           label: `${point.glyph} · ${point.id}`,
-          detail: `One of 256 token vectors. This dot is 3 principal components of a ${geometry.width}-d embedding from ${geometry.source}. Nearest in the full ${geometry.width}-d space: ${names}. First 8 coordinates: ${point.preview.join(', ')}.`
+          detail: `One of ${geometry.points.length.toLocaleString()} token vectors. This dot is 3 principal components of a ${geometry.width}-d embedding from ${geometry.source}. Nearest in the full ${geometry.width}-d space: ${names}. First 8 coordinates: ${point.preview.join(', ')}.`
         });
       }
       return { points, boxes, segments, caption: `Principal components of the real ${geometry.width}-d table (${geometry.source}). Neighbors are from the full vector, not from this picture.` };
@@ -368,8 +382,8 @@
       return { points, boxes, segments, caption: metrics.length ? 'The loss ribbon updates on every logged step, including while the run is still going.' : 'The ribbon appears on the first logged step.' };
     }
     if (route === '/finetune') {
-      const ids = [...encodeBytes(lab.prompt), ...encodeBytes(lab.completion)];
-      const promptLen = encodeBytes(lab.prompt).length;
+      const ids = [...encodeText(lab.prompt), ...encodeText(lab.completion)];
+      const promptLen = encodeText(lab.prompt).length;
       const shown = ids.slice(0, 64);
       shown.forEach((token, index) => {
         const supervised = index + 1 >= promptLen && index + 1 < ids.length;
@@ -384,8 +398,8 @@
           color: supervised ? '#c4622d' : '#1e4642',
           label: token.glyph,
           detail: supervised
-            ? `Position ${index} predicts byte ${ids[index + 1]?.id ?? '—'} (${ids[index + 1]?.glyph ?? ''}). That label is in the loss.`
-            : `Position ${index} is still inside the question, so its label is −100 and Adam does not see it. The last question byte is the exception: it predicts the first answer byte.`
+            ? `Position ${index} predicts token ${ids[index + 1]?.id ?? '—'} (${ids[index + 1]?.glyph ?? ''}). That label is in the loss.`
+            : `Position ${index} is still inside the question, so its label is −100 and Adam does not see it. The last question token is the exception: it predicts the first answer token.`
         });
       });
       return { points, boxes, segments, caption: 'Copper positions enter the loss. Pine positions are context. Edit the prompt and this row changes. Drag to read along it.' };
@@ -455,7 +469,7 @@
       {#if run?.state === 'running'}
         These update on every step, while training is still running.
       {:else if run?.id === 'corpus'}
-        This is the finished pass over the book stream, {run.step?.toLocaleString()} steps. A new pretrain starts at 20 steps and writes checkpoints/pretrain.pt, leaving checkpoints/corpus.pt in place.
+        This is the finished byte-vocabulary pass over the books, {run.step?.toLocaleString()} steps. The stream on disk is now the 8192-piece encoding. A new pretrain starts at 20 steps and writes checkpoints/pretrain.pt.
       {:else if run}
         Last {run.phase} run. {run.state}.
       {:else}
@@ -506,7 +520,7 @@
   {#if geometryError && path === '/architecture' && mode !== 'stack'}
     <p class="warn">{geometryError}</p>
   {:else if !geometry && path === '/architecture' && mode !== 'stack'}
-    <p class="note">Projecting the {256} embedding vectors…</p>
+    <p class="note">Projecting the {tokenizerState.vocabSize.toLocaleString()} embedding vectors…</p>
   {/if}
 
   <Viewport points={scene.points} boxes={scene.boxes} segments={scene.segments} ariaLabel={scene.caption} />

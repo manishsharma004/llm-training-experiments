@@ -10,7 +10,7 @@ export type ModelShape = {
 };
 
 export const defaultShape: ModelShape = {
-  vocabSize: 256,
+  vocabSize: 8192,
   blockSize: 128,
   nLayer: 5,
   nHead: 4,
@@ -69,4 +69,4 @@ export function formatCount(value: number): string {
   return new Intl.NumberFormat('en-US').format(value);
 }
 
-export const CHANCE_NATS = Math.log(256);
+export const CHANCE_NATS = Math.log(8192);

@@ -30,10 +30,10 @@
 </script>
 
 <p class="kicker">04 · Prepare</p>
-<h1>Pack cleaned documents into the bytes the model sees.</h1>
+<h1>Encode the books into the training stream.</h1>
 <p class="lede">
   Documents are split into train and validation before they are concatenated, so a validation loss is not just a replay of the training windows.
-  A newline byte separates documents. The byte tokenizer from the lab is the same encoding written into <span class="formula" style="display:inline;padding:2px 6px">train.bin</span>.
+  A newline separates documents. The byte-level BPE from the Tokens page is the encoding written into <span class="formula" style="display:inline;padding:2px 6px">data/corpus/work/train.bin</span>.
 </p>
 
 <button class="btn" onclick={prepare} disabled={busy}>{busy ? 'Preparing' : 'Prepare train and validation streams'}</button>
@@ -41,13 +41,13 @@
 
 {#if report}
   <div class="stats" style="margin-top:16px">
-    <div class="stat"><span class="note">train bytes</span><strong>{Number(report.train_tokens).toLocaleString()}</strong></div>
-    <div class="stat"><span class="note">validation bytes</span><strong>{Number(report.val_tokens).toLocaleString()}</strong></div>
+    <div class="stat"><span class="note">train tokens</span><strong>{Number(report.train_tokens).toLocaleString()}</strong></div>
+    <div class="stat"><span class="note">validation tokens</span><strong>{Number(report.val_tokens).toLocaleString()}</strong></div>
     <div class="stat"><span class="note">windows</span><strong>{Number(report.train_windows).toLocaleString()}</strong></div>
-    <div class="stat"><span class="note">question pairs</span><strong>{report.sft_pairs}</strong></div>
+    <div class="stat"><span class="note">bytes / token</span><strong>{report.bytes_per_token ?? '—'}</strong></div>
   </div>
   <section class="card">
-    <h3>First bytes of the training stream</h3>
+    <h3>First tokens, decoded</h3>
     <pre class="probe">{report.preview}</pre>
     <p class="note">Context length used for the window count is {report.block_size}. {report.separator}.</p>
   </section>

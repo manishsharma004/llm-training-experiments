@@ -23,7 +23,7 @@
 <svg class="chart" viewBox="0 0 {width} {height}" role="img" aria-label="Training loss">
   <line x1={pad} y1={baseline} x2={width - pad} y2={baseline} stroke="#8d3f16" stroke-dasharray="4 4" />
   <text x={pad} y={baseline - 6} fill="#8d3f16" font-size="12">
-    chance ln(256) = {CHANCE_NATS.toFixed(2)}
+    chance ln(8192) = {CHANCE_NATS.toFixed(2)}
   </text>
   {#if path}
     <path d={path} fill="none" stroke="#1e4642" stroke-width="2.5" />

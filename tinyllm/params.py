@@ -46,6 +46,12 @@ def breakdown(config: ModelConfig) -> dict[str, int]:
 
 
 def about_one_million(config: ModelConfig | None = None) -> bool:
+    """True for a small lab model, including the 8,192-piece book preset.
+
+    The original byte vocabulary was 1,035,008 parameters. The book vocabulary
+    keeps the same depth and width and lands at 2,050,816.
+    """
+
     cfg = config or ModelConfig()
     total = breakdown(cfg)["total"]
-    return 800_000 <= total <= 1_200_000
+    return 800_000 <= total <= 2_500_000

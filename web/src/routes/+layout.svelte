@@ -14,20 +14,21 @@
     ['/gather', 'Gather', '02'],
     ['/clean', 'Clean', '03'],
     ['/prepare', 'Prepare', '04'],
-    ['/architecture', 'Shape', '05'],
-    ['/train', 'Train', '06'],
-    ['/finetune', 'Finetune', '07'],
-    ['/generate', 'Sample', '08']
+    ['/tokenize', 'Tokens', '05'],
+    ['/architecture', 'Shape', '06'],
+    ['/train', 'Train', '07'],
+    ['/finetune', 'Finetune', '08'],
+    ['/generate', 'Sample', '09']
   ] as const;
 </script>
 
 <svelte:head>
-  <title>Harbor lab</title>
+  <title>Book lab</title>
 </svelte:head>
 
 <div class="shell">
   <aside class="rail">
-    <p class="brand">Harbor lab<small>one million parameters</small></p>
+    <p class="brand">Book lab<small>8,192-piece vocabulary</small></p>
     <nav>
       {#each links as [href, label, index]}
         <a {href} aria-current={page.url.pathname === href ? 'page' : undefined}>

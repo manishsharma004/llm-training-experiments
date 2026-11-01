@@ -30,6 +30,7 @@ packages = ["tinyllm"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "tinyllm/harbor.json" = "tinyllm/harbor.json"
+"tinyllm/bpe.json" = "tinyllm/bpe.json"
 
 [build-system]
 requires = ["hatchling"]

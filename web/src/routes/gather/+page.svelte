@@ -42,8 +42,9 @@
 <p class="kicker">02 · Gather</p>
 <h1>Bring documents in before any training.</h1>
 <p class="lede">
-  Raw files live in <span class="formula" style="display:inline;padding:2px 6px">{(report?.dataset as { raw?: string } | undefined)?.raw ?? 'data/corpus/raw'}</span>.
-  Gathering only records them. It does not delete HTML, duplicates, or junk. That is the next stage, so you can see the difference.
+  The lab reads the book corpus when <span class="formula" style="display:inline;padding:2px 6px">data/corpus/work/train.bin</span> is present.
+  Those files live in <span class="formula" style="display:inline;padding:2px 6px">{(report?.dataset as { raw?: string } | undefined)?.raw ?? 'data/corpus/raw'}</span>.
+  Gathering only records them. It does not delete HTML, duplicates, or junk. The harbor notes stay out of this list.
 </p>
 
 <section class="card stack">

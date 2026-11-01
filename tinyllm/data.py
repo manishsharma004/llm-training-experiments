@@ -10,7 +10,7 @@ from tinyllm.tokenizer import encode
 def encode_corpus(text: str) -> torch.Tensor:
     ids = encode(text)
     if len(ids) < 2:
-        raise ValueError("corpus must contain at least 2 bytes")
+        raise ValueError("corpus must contain at least 2 tokens")
     return torch.tensor(ids, dtype=torch.long)
 
 

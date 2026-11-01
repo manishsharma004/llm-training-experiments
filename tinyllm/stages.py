@@ -1,7 +1,7 @@
 """Gather, clean, and prepare text before any weights are updated.
 
-Each stage writes a report under ``data/work`` so the lab can show what was
-kept, what was rejected, and how the bytes were packed into training windows.
+Each stage writes a report under the work directory so the lab can show what
+was kept, what was rejected, and how the text was packed into token windows.
 """
 
 from __future__ import annotations
@@ -154,20 +154,22 @@ def clean(work_dir: Path) -> dict:
     return report
 
 
-def _pack(documents: list[dict]) -> bytes:
-    chunks = [row["text"].strip().encode("utf-8") for row in documents if row.get("text", "").strip()]
+def _pack_text(documents: list[dict]) -> str:
+    chunks = [str(row.get("text", "")).strip() for row in documents if str(row.get("text", "")).strip()]
     if not chunks:
-        return b""
-    return b"\n".join(chunks) + b"\n"
+        return ""
+    return "\n".join(chunks) + "\n"
 
 
 def prepare(work_dir: Path, block_size: int = 128, val_ratio: float = 0.15, seed: int = 7) -> dict:
-    """Split cleaned documents and pack them into byte streams.
+    """Split cleaned documents and encode them with the book BPE tokenizer.
 
     ``seed`` is recorded for the report. The split itself is by sorted source
     name, not by a random shuffle, so the same files always produce the same
     train and validation streams.
     """
+
+    from tinyllm.tokenizer import decode, encode, pack_ids, profile
 
     del seed  # reserved so the lab can show that the split is deterministic
     if block_size < 2:
@@ -184,30 +186,38 @@ def prepare(work_dir: Path, block_size: int = 128, val_ratio: float = 0.15, seed
     val_docs = ordered[-val_count:] if val_count else []
     train_docs = ordered[:-val_count] if val_count else ordered
     val_sources = {row.get("source", "") for row in val_docs}
-    train_bytes = _pack(train_docs)
-    val_bytes = _pack(val_docs)
-    if len(train_bytes) < 2:
+    train_text = _pack_text(train_docs)
+    val_text = _pack_text(val_docs)
+    train_ids = encode(train_text)
+    val_ids = encode(val_text)
+    if len(train_ids) < 2:
         raise ValueError("Training stream is empty after packing.")
-    if len(val_bytes) < 2:
+    if len(val_ids) < 2:
         # A single-document corpus still gets a held-out tail.
-        split_at = max(2, int(len(train_bytes) * 0.9))
-        val_bytes = train_bytes[split_at:]
-        train_bytes = train_bytes[:split_at]
-        if len(val_bytes) < 2:
-            val_bytes = train_bytes[-min(len(train_bytes), 64) :]
-    (work_dir / "train.bin").write_bytes(train_bytes)
-    (work_dir / "val.bin").write_bytes(val_bytes)
+        split_at = max(2, int(len(train_ids) * 0.9))
+        val_ids = train_ids[split_at:]
+        train_ids = train_ids[:split_at]
+        if len(val_ids) < 2:
+            val_ids = train_ids[-min(len(train_ids), 64) :]
+    (work_dir / "train.bin").write_bytes(pack_ids(train_ids))
+    (work_dir / "val.bin").write_bytes(pack_ids(val_ids))
     sft_source = _copy_sft(work_dir)
-    preview = train_bytes[:220].decode("utf-8", errors="replace")
+    train_bytes = len(train_text.encode("utf-8"))
+    val_bytes = len(val_text.encode("utf-8"))
+    preview = decode(train_ids[:80])[:360]
     report = {
         "stage": "prepare",
         "block_size": block_size,
         "train_documents": len(train_docs),
         "val_documents": len(val_docs),
-        "train_tokens": len(train_bytes),
-        "val_tokens": len(val_bytes),
-        "train_windows": max(0, len(train_bytes) - block_size),
-        "separator": "newline byte between documents",
+        "train_tokens": len(train_ids),
+        "val_tokens": len(val_ids),
+        "train_bytes": train_bytes,
+        "val_bytes": val_bytes,
+        "bytes_per_token": round(train_bytes / len(train_ids), 3) if train_ids else None,
+        "train_windows": max(0, len(train_ids) - block_size),
+        "separator": "newline between documents, then byte-level BPE",
+        "tokenizer": profile(),
         "preview": preview,
         "sft_pairs": sft_source,
         "assignment": [

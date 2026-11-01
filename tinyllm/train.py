@@ -1,6 +1,6 @@
 """Pretraining and supervised finetuning loops.
 
-Pretraining predicts every next byte of the harbor prose.
+Pretraining predicts the next token of the prepared stream.
 Finetuning uses the same weights but the loss is computed only where the
 label is a completion token. Prompt tokens stay in the context so the model
 can condition on the question.
@@ -23,7 +23,7 @@ from tinyllm.model import TinyLM
 from tinyllm.schedule import learning_rate
 from tinyllm.sensors import GpuMeter
 from tinyllm.status import read_status, write_status
-from tinyllm.tokenizer import decode, encode
+from tinyllm.tokenizer import decode, encode, unpack_ids
 
 
 def _set_seed(seed: int) -> None:
@@ -34,7 +34,10 @@ def _load_bin(path: Path) -> torch.Tensor:
     raw = path.read_bytes()
     if len(raw) < 2:
         raise ValueError(f"{path} does not contain a training stream")
-    return torch.tensor(list(raw), dtype=torch.long)
+    ids = unpack_ids(raw)
+    if len(ids) < 2:
+        raise ValueError(f"{path} does not contain a training stream")
+    return torch.tensor(ids, dtype=torch.long)
 
 
 def _load_sft(path: Path) -> list[dict[str, str]]:
@@ -206,6 +209,7 @@ def _run(
                     "tokensSeen": tokens_seen,
                     "elapsedS": round(time.perf_counter() - run_started, 3),
                     "dataSource": data_source,
+                    "vocabSize": model_config.vocab_size,
                     "valLoss": val_loss,
                     "compute": compute,
                 },
@@ -231,6 +235,7 @@ def _run(
         "tokensSeen": tokens_seen,
         "elapsedS": round(time.perf_counter() - run_started, 3),
         "dataSource": data_source,
+        "vocabSize": model_config.vocab_size,
         "valLoss": val_loss,
         "compute": compute,
     }

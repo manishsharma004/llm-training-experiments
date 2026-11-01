@@ -1,7 +1,7 @@
 """Model and run settings.
 
-The default preset is a decoder-only Transformer whose parameter count lands
-just above one million. See `tinyllm.params.breakdown` for the arithmetic.
+The default preset is a decoder-only Transformer with an 8,192-piece
+vocabulary trained on the book corpus. See `tinyllm.params.breakdown`.
 """
 
 from __future__ import annotations
@@ -14,11 +14,10 @@ import json
 class ModelConfig:
     """Architecture hyperparameters.
 
-    vocab_size is 256 because the tokenizer is raw UTF-8 bytes. That keeps
-    the embedding table small and makes every token visible in the lab UI.
+    vocab_size matches the byte-level BPE table in ``tinyllm/bpe.json``.
     """
 
-    vocab_size: int = 256
+    vocab_size: int = 8192
     block_size: int = 128
     n_layer: int = 5
     n_head: int = 4

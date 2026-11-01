@@ -15,13 +15,15 @@ def test_questions_are_held_out_of_the_prose():
     assert any("harbor watch" in prompt for prompt in prompts)
 
 
-def test_byte_roundtrip_and_description():
+def test_bpe_roundtrip_and_description():
     text = "The lamp is copper.\n"
+    assert encode(text) == [627, 5507, 351, 1001, 7670, 13, 198]
     assert decode(encode(text)) == text
     rows = describe(text)
-    assert rows[0]["glyph"] == "T"
+    assert rows[0]["glyph"] == "The"
     assert rows[-1]["glyph"] == "↵"
-    assert all(0 <= row["id"] < 256 for row in rows)
+    assert all(0 <= row["id"] < 8192 for row in rows)
+    assert "".join(row["piece"] for row in rows) == text
 
 
 def test_finetune_labels_ignore_the_prompt():

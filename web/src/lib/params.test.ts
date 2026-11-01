@@ -4,8 +4,8 @@ import { breakdown, defaultShape } from './params';
 test('default shape matches the PyTorch module', () => {
   const report = breakdown(defaultShape);
   expect(report.valid).toBe(true);
-  expect(report.total).toBe(1_035_008);
-  expect(report.tokenEmbedding).toBe(256 * 128);
+  expect(report.total).toBe(2_050_816);
+  expect(report.tokenEmbedding).toBe(8192 * 128);
   expect(report.positionEmbedding).toBe(128 * 128);
 });
 

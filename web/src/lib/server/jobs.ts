@@ -166,14 +166,13 @@ export function startRun(request: RunRequest) {
       error: `Prepare the dataset first. ${data.work}/train.bin is not there yet.`
     };
   }
-  const init = existsSync(path.join(root, 'checkpoints', 'corpus.pt'))
-    ? 'checkpoints/corpus.pt'
-    : 'checkpoints/pretrain.pt';
+  const init = 'checkpoints/pretrain.pt';
   if (phase === 'finetune' && !existsSync(path.join(root, init))) {
     return {
       ok: false as const,
       status: 400,
-      error: 'Pretrain first. checkpoints/corpus.pt is not there yet.'
+      error:
+        'Pretrain with the current 8192-piece tokenizer first. checkpoints/pretrain.pt is not there yet. The earlier book pass in checkpoints/corpus.pt used a 256-byte vocabulary and is not loaded into this model.'
     };
   }
 
@@ -265,6 +264,8 @@ export function startRun(request: RunRequest) {
         tokensTrained: 0,
         tokensSeen: 0,
         elapsedS: 0,
+        vocabSize: 8192,
+        dataSource: phase === 'finetune' ? path.join(data.work, 'sft.jsonl') : path.join(data.work, 'train.bin'),
         compute: null,
         message: 'Loading PyTorch and building the model. Token, power, and temperature totals update on each step.'
       },
@@ -378,12 +379,12 @@ export function readHarbor(root = repoRoot()) {
   };
 }
 
-function stageResult(command: string[], input?: string) {
+function stageResult(command: string[], input?: string, timeout = 60_000) {
   const root = repoRoot();
   const result = spawnSync(pythonBin(root), ['-m', 'tinyllm.stages', ...command], {
     cwd: root,
     encoding: 'utf8',
-    timeout: 60_000,
+    timeout,
     input
   });
   if (result.status !== 0) {
@@ -411,7 +412,7 @@ export function runClean() {
 
 export function runPrepare() {
   const data = datasetPaths();
-  return stageResult(['prepare', '--work', data.work, '--block-size', '128']);
+  return stageResult(['prepare', '--work', data.work, '--block-size', '128'], undefined, 180_000);
 }
 
 export function ingestDocument(name: string, text: string) {
@@ -442,17 +443,28 @@ export function probeDevice(gfxOverride: boolean) {
   return { ok: true as const, device: JSON.parse(result.stdout) as Record<string, unknown> };
 }
 
+function streamIds(file: Buffer, limit: number): { total: number; ids: number[] } {
+  if (file.subarray(0, 4).toString('utf8') === 'TKv1') {
+    const total = Math.floor((file.length - 4) / 2);
+    const shown = Math.min(total, limit);
+    const ids: number[] = [];
+    for (let index = 0; index < shown; index += 1) ids.push(file.readUInt16LE(4 + index * 2));
+    return { total, ids };
+  }
+  return { total: file.length, ids: [...file.subarray(0, limit)] };
+}
+
 export function trainExcerpt(root = repoRoot()) {
   const data = datasetPaths(root);
   const candidates = [`${data.work}/train.bin`, 'data/corpus/work/train.bin', 'data/work/train.bin'];
   for (const rel of candidates) {
     const abs = path.join(root, rel);
     if (!existsSync(abs)) continue;
-    const file = readFileSync(abs);
+    const stream = streamIds(readFileSync(abs), 240);
     return {
       path: rel,
-      total: file.length,
-      bytes: [...file.subarray(0, 240)]
+      total: stream.total,
+      bytes: stream.ids
     };
   }
   return null;
@@ -462,8 +474,9 @@ let geometryCache: { key: string; body: string } | null = null;
 
 export function modelGeometry() {
   const root = repoRoot();
-  const candidates = ['checkpoints/corpus.pt', 'checkpoints/pretrain.pt', 'checkpoints/sft.pt'];
-  const rel = candidates.find((item) => existsSync(path.join(root, item))) ?? '';
+  // corpus.pt and older pretrain files are the 256-byte model. The stage projects
+  // the current 8192-piece table instead of that checkpoint.
+  const rel = '';
   const key = rel ? `${rel}:${statSync(path.join(root, rel)).mtimeMs}:axes` : 'init';
   if (geometryCache?.key === key) {
     return { ok: true as const, geometry: JSON.parse(geometryCache.body) as Record<string, unknown> };

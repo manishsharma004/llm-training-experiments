@@ -58,7 +58,7 @@ def _train_from_args(args: argparse.Namespace, steps: int) -> TrainConfig:
 
 
 def _add_model_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--vocab-size", type=int, default=256)
+    parser.add_argument("--vocab-size", type=int, default=8192)
     parser.add_argument("--block-size", type=int, default=128)
     parser.add_argument("--n-layer", type=int, default=5)
     parser.add_argument("--n-head", type=int, default=4)
@@ -236,7 +236,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_model_args(params)
     params.set_defaults(func=cmd_params)
 
-    tokenize = sub.add_parser("tokenize", help="Show byte tokens for a string.")
+    tokenize = sub.add_parser("tokenize", help="Show BPE tokens for a string.")
     tokenize.add_argument("--text", required=True)
     tokenize.set_defaults(func=cmd_tokenize)
 

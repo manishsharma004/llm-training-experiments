@@ -2,13 +2,15 @@
   import { onMount } from 'svelte';
   import RunBench from '#lib/components/RunBench.svelte';
   import { lab } from '#lib/lab.svelte.ts';
-  import { encodeBytes } from '#lib/bytes.ts';
+  import { encodeText } from '#lib/bytes.ts';
+  import { ensureTokenizer, tokenizerState } from '#lib/tokenizer.svelte.ts';
   import type { Harbor } from '#lib/types.ts';
 
   let harbor = $state<Harbor | null>(null);
   let index = $state(0);
 
   onMount(async () => {
+    await ensureTokenizer();
     const response = await fetch('/api/harbor');
     harbor = await response.json();
     if (harbor && harbor.pairs[0]) {
@@ -17,8 +19,8 @@
     }
   });
 
-  const promptTokens = $derived(encodeBytes(lab.prompt));
-  const completionTokens = $derived(encodeBytes(lab.completion));
+  const promptTokens = $derived(tokenizerState.ready ? encodeText(lab.prompt) : []);
+  const completionTokens = $derived(tokenizerState.ready ? encodeText(lab.completion) : []);
   const promptLen = $derived(promptTokens.length);
 
   function choose(next: number) {
@@ -29,7 +31,7 @@
   }
 </script>
 
-<p class="kicker">07 · Finetune</p>
+<p class="kicker">08 · Finetune</p>
 <h1>Same model. Loss only on the answer.</h1>
 <p class="lede">
   Supervised finetuning does not swap the architecture. It changes which tokens are allowed to produce a gradient.
@@ -62,11 +64,11 @@
         <span class="chip context" title="context, no loss"><b>{token.glyph}</b>{token.id}</span>
       {/each}
       {#each completionTokens as token}
-        <span class="chip supervised" title="loss when this byte is predicted"><b>{token.glyph}</b>{token.id}</span>
+        <span class="chip supervised" title="loss when this token is predicted"><b>{token.glyph}</b>{token.id}</span>
       {/each}
     </div>
     <p class="note">
-      The first supervised label is at input index {Math.max(0, promptLen - 1)}. That position still sees the prompt and is asked to predict the first answer byte.
+      The first supervised label is at input index {Math.max(0, promptLen - 1)}. That position still sees the prompt and is asked to predict the first answer token.
       Prompt length {promptLen}, answer length {completionTokens.length}.
     </p>
   </section>

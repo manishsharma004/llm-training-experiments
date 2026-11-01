@@ -12,7 +12,7 @@ def test_geometry_keeps_full_width_neighbors_and_causal_attention():
     model.eval()
     payload = build_geometry(model, "test init", prompt="Hi")
     assert payload["width"] == 32
-    assert len(payload["points"]) == 256
+    assert len(payload["points"]) == model.config.vocab_size
     assert len(payload["points"][0]["preview"]) == 8
     assert len(payload["points"][0]["neighbors"]) == 4
     assert 0 not in payload["points"][0]["neighbors"]

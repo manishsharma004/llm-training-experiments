@@ -41,9 +41,9 @@ That puts `torch==2.14.0+rocm10.1.0` and `amd-torch-device-gfx1012` into `.venv`
 
 ## What the pipeline does
 
-1. **Bytes.** Text is UTF-8. Each byte is a token, so the vocabulary is 256 and there is no separate merge table.
-2. **Shape.** Five pre-norm Transformer blocks, width 128, four heads, context 128. The token embedding and the output head share one matrix. The default configuration is **1,035,008** parameters.
-3. **Pretrain.** Predict the next byte of the harbor prose. Loss is cross-entropy. A uniform model sits at `ln(256) ≈ 5.545`; anything below that means the model is less surprised than chance.
+1. **Tokens.** Byte-level BPE, vocabulary 8192, trained on the cleaned book corpus. The merge table is `tinyllm/bpe.json`. Streams are `TKv1` plus little-endian uint16 ids. Rebuild the table with `scripts/train_bpe.py` after `pip install tokenizers` in `.venv` (do not `uv sync` if the AMD torch wheel is installed).
+2. **Shape.** Five pre-norm Transformer blocks, width 128, four heads, context 128. The token embedding and the output head share one matrix. The default configuration is **2,050,816** parameters.
+3. **Pretrain.** Predict the next token of the book stream when `data/corpus/work/train.bin` is present. Loss is cross-entropy. A uniform model sits at `ln(8192) ≈ 9.011`; anything below that means the model is less surprised than chance.
 4. **Finetune.** Same weights, new examples. The prompt is still in the context, but those positions are labeled `-100` and dropped from the loss. Only the answer tokens are supervised. The question format never appears in the pretraining text, so a change in the samples is the finetune working.
 5. **Sample.** Greedy decoding (`temperature = 0`) or temperature sampling with optional top-k.
 
@@ -89,7 +89,7 @@ Open the dev server (port 5173, or another free port). The pages follow the pipe
 ## Reading a run
 
 - The chart's dashed line is chance, `ln(vocab)`.
-- Perplexity is `exp(loss)`. Chance for bytes is 256. A perplexity of 10 means the model is effectively choosing among about ten next bytes.
+- Perplexity is `exp(loss)`. Chance for this vocabulary is 8192. A perplexity of 10 means the model is effectively choosing among about ten next pieces.
 - Probes run during training. "The lighthouse lamp is" should start to finish the memorized fact. The `Question:` probes should stay aimless after pretraining and tighten after finetuning, because that format is new.
 - Finetune usually wants a lower learning rate than pretraining. The lab defaults to `3e-3` then `1e-3`.
 

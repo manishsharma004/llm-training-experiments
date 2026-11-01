@@ -1,9 +1,9 @@
 """Project the real embedding and one attention pass into something a screen can show.
 
-The token table is 256 vectors of width 128. The lab draws the first three
-principal components, and keeps the nearest neighbors from the full width so
-a click is not only a guess about the flattened picture. Attention weights
-come from the same forward the trainer uses.
+The token table is one vector per vocabulary piece. The lab draws the first
+three principal components, and keeps the nearest neighbors from the full
+width so a click is not only a guess about the flattened picture. Attention
+weights come from the same forward the trainer uses.
 """
 
 from __future__ import annotations
@@ -18,17 +18,11 @@ import torch.nn.functional as F
 from tinyllm.checkpoint import load_model
 from tinyllm.config import ModelConfig
 from tinyllm.model import TinyLM
-from tinyllm.tokenizer import encode
+from tinyllm.tokenizer import encode, piece_glyph
 
 
-def glyph_for(byte: int) -> str:
-    if byte == 10:
-        return "↵"
-    if byte == 32:
-        return "␣"
-    if 32 <= byte < 127:
-        return chr(byte)
-    return f"\\x{byte:02x}"
+def glyph_for(token_id: int) -> str:
+    return piece_glyph(token_id)
 
 
 def load_for_inspect(checkpoint: Path | None) -> tuple[TinyLM, str]:
@@ -97,7 +91,7 @@ def build_geometry(model: TinyLM, source: str, prompt: str = "The lighthouse lam
         "attention": {
             "text": prompt,
             "ids": ids,
-            "glyphs": [glyph_for(byte) for byte in ids],
+            "glyphs": [glyph_for(token_id) for token_id in ids],
             "layers": layers,
         },
     }
