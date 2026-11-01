@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PipelineFigure from '#lib/components/diagrams/PipelineFigure.svelte';
   import { breakdown, formatCount } from '#lib/params.ts';
 
   const report = breakdown();
@@ -42,13 +43,4 @@
   {/each}
 </div>
 
-<section class="card">
-  <h2>The order inside one update</h2>
-  <ol>
-    <li>Take a window of bytes. The label vector is that window shifted one step left.</li>
-    <li>Embed tokens and positions, run the residual blocks, project to 256 logits.</li>
-    <li>Cross-entropy against the labels. Finetuning sets prompt labels to <span class="formula" style="display:inline;padding:2px 6px">-100</span>, which PyTorch ignores.</li>
-    <li>AdamW step with linear warmup and cosine decay, gradients clipped at 1.</li>
-    <li>Every few steps, greedy-decode four fixed probes so you can read the weights, not just the loss.</li>
-  </ol>
-</section>
+<PipelineFigure />

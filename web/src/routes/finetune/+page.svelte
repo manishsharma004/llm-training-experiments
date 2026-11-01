@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import LossMask from '#lib/components/diagrams/LossMask.svelte';
   import RunBench from '#lib/components/RunBench.svelte';
   import { encodeBytes } from '#lib/bytes.ts';
   import type { Harbor } from '#lib/types.ts';
@@ -30,13 +31,15 @@
   }
 </script>
 
-<p class="kicker">05 · Finetune</p>
+<p class="kicker">07 · Finetune</p>
 <h1>Same model. Loss only on the answer.</h1>
 <p class="lede">
   Supervised finetuning does not swap the architecture. It changes which tokens are allowed to produce a gradient.
   The prompt is context. Labels that would ask the model to copy the question are set to −100 and ignored.
   Copper tokens below are the ones the loss sees.
 </p>
+
+<LossMask {prompt} {completion} />
 
 <div class="grid">
   <section class="card">
