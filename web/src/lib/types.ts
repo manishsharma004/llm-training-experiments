@@ -25,6 +25,7 @@ export type RunStatus = {
   device?: string;
   arch?: string;
   parameters?: number;
+  vocabSize?: number;
   dataSource?: string;
   tokensPerSec?: number;
   tokensTrained?: number;

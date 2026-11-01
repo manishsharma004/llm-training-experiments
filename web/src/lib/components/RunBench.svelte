@@ -133,12 +133,12 @@
     </label>
     {#if phase !== 'finetune'}
       <label class="field">Pretrain steps
-        <input type="number" min="1" max="2000" bind:value={stepCount} />
+        <input type="number" min="1" max="20000" bind:value={stepCount} />
       </label>
     {/if}
     {#if phase !== 'pretrain'}
       <label class="field">Finetune steps
-        <input type="number" min="1" max="2000" bind:value={ftCount} />
+        <input type="number" min="1" max="20000" bind:value={ftCount} />
       </label>
     {/if}
     <label class="field">Batch
@@ -200,7 +200,7 @@
     {/if}
     {#if run.dataSource}<p class="note">Data: {run.dataSource}. Precision fp32.{#if run.tokensPerSec} {run.tokensPerSec} tokens/s.{/if}{#if run.valLoss} Validation loss {Number(run.valLoss).toFixed(3)}.{/if}</p>{/if}
     {#if run.message}<p class="note">{run.message}</p>{/if}
-    <LossChart metrics={run.metrics ?? []} />
+    <LossChart metrics={run.metrics ?? []} vocabSize={run.vocabSize ?? (run.parameters === 1_035_008 ? 256 : 8192)} />
     {#if run.probes && run.probes.length}
       <div class="probes">
         <h3>Probes from this run</h3>

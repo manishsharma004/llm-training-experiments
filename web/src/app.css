@@ -183,6 +183,27 @@ h3 { font-size: 1.15rem; margin: 0 0 6px; }
   overflow-x: auto;
 }
 
+.source { margin: 0; }
+.source figcaption {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+  margin: 0 0 6px;
+}
+.source pre {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  background: #241c16;
+  color: #f4efe6;
+  border-radius: 14px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  margin: 0;
+  white-space: pre;
+}
+
 .row {
   display: flex;
   flex-wrap: wrap;

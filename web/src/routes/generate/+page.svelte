@@ -2,6 +2,8 @@
   import { onMount } from 'svelte';
   import { softmax } from '#lib/bytes.ts';
   import { lab } from '#lib/lab.svelte.ts';
+  import Source from '#lib/components/Source.svelte';
+  import { checkpointStory, type CheckpointFact } from '#lib/checkpointStory.ts';
 
   const demo = [
     { glyph: 'c', logit: 2.4 },
@@ -15,7 +17,8 @@
   let prompt = $state('The lighthouse lamp is');
   let maxNewTokens = $state(24);
   let topK = $state(0);
-  let checkpoints = $state<{ path: string }[]>([]);
+  let checkpoints = $state<CheckpointFact[]>([]);
+  let trainTokens = $state<number | null>(null);
   let pending = $state(false);
   let error = $state('');
   let samples = $state<{ checkpoint: string; text: string; prompt: string; vocabSize?: number; error?: string }[]>([]);
@@ -33,9 +36,12 @@
   }
 
   onMount(async () => {
-    const response = await fetch('/api/checkpoints');
-    const body = await response.json();
-    checkpoints = body.checkpoints ?? [];
+    const [files, data] = await Promise.all([
+      fetch('/api/checkpoints').then((response) => response.json()),
+      fetch('/api/data').then((response) => response.json())
+    ]);
+    checkpoints = files.checkpoints ?? [];
+    trainTokens = data.prepare?.train_tokens ?? null;
   });
 
   async function sampleAll() {
@@ -118,6 +124,34 @@
       </div>
     </div>
   </div>
+</section>
+
+<section class="card stack">
+  <h2>Why the three files differ</h2>
+  <p>
+    Pretraining on the <a href="/train">Train</a> page draws windows from the whole book stream.
+    A file is fluent only after those steps cover the stream and the loss falls near 1 nat.
+    Finetuning uses a different loss: the harbor question is context, and only the answer tokens are trained.
+    The sampler then encodes the prompt with the vocabulary stored in the file.
+  </p>
+  <Source
+    file="tinyllm/tokenizer.py"
+    code={`def encode_for_vocab(text: str, vocab_size: int) -> list[int]:
+    ids = encode_bytes(text) if vocab_size <= 256 else encode(text)
+    overflow = next((token_id for token_id in ids if token_id >= vocab_size), None)
+    if overflow is not None:
+        raise ValueError(
+            f"This checkpoint has a vocabulary of {vocab_size}. "
+            f"The prompt needs id {overflow}, which that table does not contain."
+        )
+    return ids`}
+  />
+  {#each checkpoints as row}
+    <article class="probe">
+      <strong>{row.path}</strong>
+      <div>{checkpointStory(row, trainTokens)}</div>
+    </article>
+  {/each}
 </section>
 
 <section class="card stack">

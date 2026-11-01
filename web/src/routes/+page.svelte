@@ -19,7 +19,7 @@
     ['/clean', '03 Clean', 'Strip HTML, drop junk and exact duplicates, and keep the rejection reasons.'],
     ['/prepare', '04 Prepare', 'Hold out validation books and encode the rest with the 8192-piece tokenizer.'],
     ['/tokenize', '05 Tokens', 'Inspect the byte-level BPE vocabulary trained on those books.'],
-    ['/train', '07 Train', 'The finished book pass stays visible. A new run starts at 20 steps on the token stream.'],
+    ['/train', '07 Train', 'Next-token loss on the full book stream. The step count decides how much of it a run sees.'],
     ['/finetune', '08 Finetune', 'The question stays in context. Only the answer tokens enter the loss.']
   ];
 </script>

@@ -19,6 +19,7 @@ from pathlib import Path
 from tinyllm.config import ModelConfig, TrainConfig
 from tinyllm.corpus import finetune_examples, prose_corpus
 from tinyllm.params import about_one_million, breakdown
+from tinyllm.checkpoint import summarize
 from tinyllm.sample import complete
 from tinyllm.status import write_status
 from tinyllm.tokenizer import describe
@@ -220,6 +221,19 @@ def cmd_device(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_checkpoints(args: argparse.Namespace) -> int:
+    root = Path(args.root) if args.root else Path.cwd()
+    folder = root / "checkpoints"
+    rows = []
+    if folder.is_dir():
+        for path in sorted(folder.rglob("*.pt")):
+            row = summarize(path)
+            row["path"] = path.relative_to(root).as_posix()
+            rows.append(row)
+    print(json.dumps(rows))
+    return 0
+
+
 def cmd_show_data(args: argparse.Namespace) -> int:
     if args.kind == "prose":
         print(prose_corpus(args.repeats))
@@ -282,6 +296,10 @@ def build_parser() -> argparse.ArgumentParser:
     sample.add_argument("--top-k", type=int, default=0)
     sample.add_argument("--json", action="store_true")
     sample.set_defaults(func=cmd_sample)
+
+    files = sub.add_parser("checkpoints", help="Print phase, steps, loss, and vocabulary for each checkpoint.")
+    files.add_argument("--root", default="")
+    files.set_defaults(func=cmd_checkpoints)
 
     data = sub.add_parser("data", help="Print the prose corpus or the finetune pairs.")
     data.add_argument("--kind", choices=("prose", "sft"), default="prose")

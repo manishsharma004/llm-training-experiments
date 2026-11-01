@@ -15,7 +15,7 @@ export type RunRequest = {
   gfxOverride: boolean;
 };
 
-const MAX_STEPS = 2000;
+const MAX_STEPS = 20_000;
 
 export function repoRoot(): string {
   const cwd = process.cwd();
@@ -120,9 +120,21 @@ export function latestRun(root: string) {
   return listRuns(root)[0] ?? null;
 }
 
-export function listCheckpoints(root: string) {
+export type CheckpointFact = {
+  path: string;
+  phase?: string;
+  step?: number;
+  loss?: number;
+  vocabSize?: number;
+  blockSize?: number;
+  batchSize?: number;
+};
+
+let checkpointCache: { key: string; rows: CheckpointFact[] } | null = null;
+
+export function listCheckpoints(root: string): CheckpointFact[] {
   const dir = path.join(root, 'checkpoints');
-  if (!existsSync(dir)) return [] as { path: string }[];
+  if (!existsSync(dir)) return [];
   const files: string[] = [];
   const walk = (current: string) => {
     for (const name of readdirSync(current, { withFileTypes: true })) {
@@ -132,9 +144,24 @@ export function listCheckpoints(root: string) {
     }
   };
   walk(dir);
-  return files
+  const key = files.map((abs) => `${abs}:${statSync(abs).mtimeMs}`).sort().join('|');
+  if (checkpointCache?.key === key) return checkpointCache.rows;
+  const fallback = files
     .map((abs) => ({ path: path.relative(root, abs).split(path.sep).join('/') }))
-    .sort((a, b) => a.path.localeCompare(b.path));
+    .sort((left, right) => left.path.localeCompare(right.path));
+  const result = spawnSync(pythonBin(root), ['-m', 'tinyllm.cli', 'checkpoints', '--root', root], {
+    cwd: root,
+    encoding: 'utf8',
+    timeout: 60_000
+  });
+  if (result.status !== 0 || !result.stdout.trim()) {
+    checkpointCache = { key, rows: fallback };
+    return fallback;
+  }
+  const parsed = JSON.parse(result.stdout) as CheckpointFact[];
+  const rows = parsed.filter((row) => typeof row.path === 'string').sort((left, right) => left.path.localeCompare(right.path));
+  checkpointCache = { key, rows };
+  return rows;
 }
 
 function checkpointAllowed(root: string, rel: string): string | null {

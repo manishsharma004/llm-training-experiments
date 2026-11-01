@@ -3,6 +3,7 @@
   import RunBench from '#lib/components/RunBench.svelte';
   import { lab } from '#lib/lab.svelte.ts';
   import { encodeText } from '#lib/bytes.ts';
+  import Source from '#lib/components/Source.svelte';
   import { ensureTokenizer, tokenizerState } from '#lib/tokenizer.svelte.ts';
   import type { Harbor } from '#lib/types.ts';
 
@@ -74,10 +75,33 @@
   </section>
 </div>
 
+<h2>The same forward, a different label</h2>
+<p>
+  The book pretrain on the <a href="/train">Train</a> page predicts every next token.
+  Finetune keeps that network and that checkpoint, then sets the question’s labels to −100.
+  The last prompt token stays supervised, because it is the position that predicts the first answer token.
+  The harbor notes are the only pairs in this lab. A loss near zero means those answers were memorized, which is why a prose prompt on the <a href="/generate">Sample</a> page comes back as fragments of them.
+</p>
+<Source
+  file="tinyllm/data.py"
+  code={`for index in range(length):
+    predicts = index + 1
+    if predicts >= prompt_len:
+        labels[row, index] = target[index]`}
+/>
+<Source
+  file="tinyllm/model.py"
+  code={`loss = F.cross_entropy(
+    logits.view(-1, logits.size(-1)),
+    labels.view(-1),
+    ignore_index=-100,
+)`}
+/>
+
 <h2>Continue from the pretrained checkpoint</h2>
-<p class="note">Finetune reads <span class="formula" style="display:inline;padding:2px 6px">checkpoints/pretrain.pt</span> and writes <span class="formula" style="display:inline;padding:2px 6px">checkpoints/sft.pt</span>. The learning rate is lower than pretraining so the new format can land without washing out the prose.</p>
+<p class="note">Finetune reads <span class="formula" style="display:inline;padding:2px 6px">checkpoints/pretrain.pt</span> and writes <span class="formula" style="display:inline;padding:2px 6px">checkpoints/sft.pt</span>. The learning rate is lower than pretraining so the new answers can land. The step count and loss of the file on disk are on the <a href="/train">Train</a> page and again beside the sample.</p>
 <RunBench phase="finetune" finetuneSteps={8} learningRate={0.001} />
 
 <h2>Or run the whole pipeline</h2>
-<p class="note">Pretrain, then finetune, into the same checkpoint paths. The chart keeps both phases: pine, then copper. If the learning rate is above 1e-3, the finetune half of the pipeline lowers it to 1e-3. About 200 pretrain steps is where the prose probe starts finishing “copper”; the question probe should stay messy until the finetune half. Finetuning can blur the prose. That tradeoff is the point of comparing the two checkpoints on the sample page.</p>
+<p class="note">Pretrain, then finetune, into the same checkpoint paths. The chart keeps both phases: pine, then copper. If the learning rate is above 1e-3, the finetune half lowers it to 1e-3. The harbor prose is a few repeated sentences, so a couple of hundred steps can memorize “copper” there. The book stream on the Train page is millions of tokens, and the same step count does not cover it.</p>
 <RunBench phase="pipeline" steps={20} finetuneSteps={8} learningRate={0.003} />

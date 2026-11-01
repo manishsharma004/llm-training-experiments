@@ -84,7 +84,7 @@
       <li>Add the residual again.</li>
     </ol>
   </div>
-  <p>After the stack, a final LayerNorm and the tied head produce one logit per byte. Per block this preset spends {formatCount(report.perBlock)} parameters.</p>
+  <p>After the stack, a final LayerNorm and the tied head produce one logit per vocabulary piece. Per block this preset spends {formatCount(report.perBlock)} parameters.</p>
   <table>
     <thead><tr><th>Group</th><th>Expression</th><th>Count</th></tr></thead>
     <tbody>

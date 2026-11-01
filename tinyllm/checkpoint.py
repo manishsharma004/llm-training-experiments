@@ -36,6 +36,26 @@ def save_checkpoint(
     )
 
 
+def summarize(path: Path) -> dict:
+    """Read the configs stored beside the weights. The tensors stay on CPU."""
+
+    try:
+        blob = torch.load(path, map_location="cpu", weights_only=False)
+    except TypeError:
+        blob = torch.load(path, map_location="cpu")
+    config = blob.get("model_config") or {}
+    train = blob.get("train_config") or {}
+    loss = blob.get("loss")
+    return {
+        "phase": blob.get("phase"),
+        "step": blob.get("step"),
+        "loss": None if loss is None else float(loss),
+        "vocabSize": config.get("vocab_size"),
+        "blockSize": config.get("block_size"),
+        "batchSize": train.get("batch_size"),
+    }
+
+
 def load_model(path: Path, device: torch.device) -> tuple[TinyLM, dict]:
     try:
         blob = torch.load(path, map_location=device, weights_only=False)

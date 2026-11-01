@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from tinyllm.checkpoint import save_checkpoint
+from tinyllm.checkpoint import save_checkpoint, summarize
 from tinyllm.config import ModelConfig, TrainConfig
 from tinyllm.model import TinyLM
 from tinyllm.sample import complete
@@ -32,6 +32,17 @@ def test_bpe_checkpoint_round_trips_the_prompt(tmp_path: Path):
     result = complete(path, prompt, max_new_tokens=2, temperature=0.0)
     assert result["vocabSize"] == 8192
     assert result["text"].startswith(prompt)
+
+
+def test_summary_reads_the_saved_vocabulary(tmp_path: Path):
+    path = tmp_path / "byte.pt"
+    _save(path, 256)
+    row = summarize(path)
+    assert row["vocabSize"] == 256
+    assert row["phase"] == "pretrain"
+    assert row["step"] == 1
+    assert row["blockSize"] == 32
+    assert row["batchSize"] == 16
 
 
 def test_small_vocab_reports_an_id_it_cannot_embed(tmp_path: Path):
