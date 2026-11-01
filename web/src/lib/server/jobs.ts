@@ -37,6 +37,28 @@ function runsDir(root: string): string {
   return path.join(root, 'runs');
 }
 
+/** The book stream when it is on disk, otherwise the small harbor sample. */
+export function datasetPaths(root = repoRoot()) {
+  const corpus = path.join(root, 'data', 'corpus', 'work', 'train.bin');
+  if (existsSync(corpus)) {
+    return { raw: 'data/corpus/raw', work: 'data/corpus/work', kind: 'corpus' as const };
+  }
+  return { raw: 'data/raw', work: 'data/work', kind: 'harbor' as const };
+}
+
+function presentRun(id: string, status: Record<string, unknown>, message = '') {
+  const metrics = Array.isArray(status.metrics) ? status.metrics : [];
+  const last = (metrics[metrics.length - 1] ?? {}) as { tokens_per_sec?: number; tokensPerSec?: number };
+  const tokensPerSec = status.tokensPerSec ?? last.tokensPerSec ?? last.tokens_per_sec;
+  return {
+    id,
+    ...status,
+    tokensPerSec,
+    state: String(status.state ?? 'unknown'),
+    message: typeof status.message === 'string' ? status.message : message
+  };
+}
+
 export function readJson(file: string): Record<string, unknown> | null {
   if (!existsSync(file)) return null;
   try {
@@ -62,6 +84,11 @@ function clampInt(value: number, min: number, max: number): number {
 
 export function loadRun(root: string, id: string) {
   if (!/^[A-Za-z0-9._-]+$/.test(id)) return null;
+  if (id === 'corpus') {
+    const status = readJson(path.join(runsDir(root), 'corpus-status.json'));
+    if (!status) return null;
+    return presentRun('corpus', status);
+  }
   const dir = path.join(runsDir(root), id);
   const status = readJson(path.join(dir, 'status.json'));
   const meta = readJson(path.join(dir, 'meta.json'));
@@ -73,7 +100,7 @@ export function loadRun(root: string, id: string) {
     state = 'error';
     message = message || 'The training process stopped before writing a final status.';
   }
-  return { id, ...(status ?? {}), state, message, pid };
+  return { ...presentRun(id, status ?? {}, message), state, message, pid };
 }
 
 export function listRuns(root: string) {
@@ -83,7 +110,10 @@ export function listRuns(root: string) {
     .filter((name) => existsSync(path.join(dir, name, 'status.json')))
     .sort()
     .reverse();
-  return ids.map((id) => loadRun(root, id)).filter((run) => run !== null);
+  const runs = ids.map((id) => loadRun(root, id)).filter((run) => run !== null);
+  const corpus = loadRun(root, 'corpus');
+  if (corpus && !runs.some((run) => run.id === 'corpus')) runs.push(corpus);
+  return runs;
 }
 
 export function latestRun(root: string) {
@@ -127,18 +157,23 @@ export function startRun(request: RunRequest) {
   if (phase !== 'pretrain' && phase !== 'finetune' && phase !== 'pipeline') {
     return { ok: false as const, status: 400, error: 'Phase must be pretrain, finetune, or pipeline.' };
   }
-  if ((phase === 'pretrain' || phase === 'pipeline') && !existsSync(path.join(root, 'data', 'work', 'train.bin'))) {
+  const data = datasetPaths(root);
+  const trainBin = path.join(root, data.work, 'train.bin');
+  if ((phase === 'pretrain' || phase === 'pipeline') && !existsSync(trainBin)) {
     return {
       ok: false as const,
       status: 400,
-      error: 'Prepare the dataset first. data/work/train.bin is not there yet.'
+      error: `Prepare the dataset first. ${data.work}/train.bin is not there yet.`
     };
   }
-  if (phase === 'finetune' && !existsSync(path.join(root, 'checkpoints', 'pretrain.pt'))) {
+  const init = existsSync(path.join(root, 'checkpoints', 'corpus.pt'))
+    ? 'checkpoints/corpus.pt'
+    : 'checkpoints/pretrain.pt';
+  if (phase === 'finetune' && !existsSync(path.join(root, init))) {
     return {
       ok: false as const,
       status: 400,
-      error: 'Pretrain first. checkpoints/pretrain.pt is not there yet.'
+      error: 'Pretrain first. checkpoints/corpus.pt is not there yet.'
     };
   }
 
@@ -170,9 +205,9 @@ export function startRun(request: RunRequest) {
     '--status',
     statusPath
   ];
-  const sft = path.join(root, 'data', 'work', 'sft.jsonl');
-  const dataArgs = existsSync(path.join(root, 'data', 'work', 'train.bin')) ? ['--data', 'data/work'] : [];
-  const sftArgs = existsSync(sft) ? ['--sft', 'data/work/sft.jsonl'] : [];
+  const sft = path.join(root, data.work, 'sft.jsonl');
+  const dataArgs = existsSync(trainBin) ? ['--data', data.work] : [];
+  const sftArgs = existsSync(sft) ? ['--sft', path.join(data.work, 'sft.jsonl')] : [];
   const args = ['-m', 'tinyllm.cli'];
   if (phase === 'pretrain') {
     args.push(
@@ -194,7 +229,7 @@ export function startRun(request: RunRequest) {
       '--sample-every',
       '10',
       '--init',
-      'checkpoints/pretrain.pt',
+      init,
       '--out',
       'checkpoints/sft.pt',
       ...sftArgs,
@@ -358,23 +393,30 @@ function stageResult(command: string[], input?: string) {
 }
 
 export function dataReport() {
-  return stageResult(['report', '--raw', 'data/raw', '--work', 'data/work']);
+  const data = datasetPaths();
+  const result = stageResult(['report', '--raw', data.raw, '--work', data.work]);
+  if (!result.ok) return result;
+  return { ok: true as const, report: { ...result.report, dataset: data } };
 }
 
 export function runGather() {
-  return stageResult(['gather', '--raw', 'data/raw', '--work', 'data/work']);
+  const data = datasetPaths();
+  return stageResult(['gather', '--raw', data.raw, '--work', data.work]);
 }
 
 export function runClean() {
-  return stageResult(['clean', '--work', 'data/work']);
+  const data = datasetPaths();
+  return stageResult(['clean', '--work', data.work]);
 }
 
 export function runPrepare() {
-  return stageResult(['prepare', '--work', 'data/work', '--block-size', '128']);
+  const data = datasetPaths();
+  return stageResult(['prepare', '--work', data.work, '--block-size', '128']);
 }
 
 export function ingestDocument(name: string, text: string) {
-  return stageResult(['ingest', '--raw', 'data/raw', '--name', name.slice(0, 80)], text.slice(0, 200_000));
+  const data = datasetPaths();
+  return stageResult(['ingest', '--raw', data.raw, '--name', name.slice(0, 80)], text.slice(0, 200_000));
 }
 
 let deviceCache: { at: number; gfx: boolean; body: string } | null = null;
@@ -401,7 +443,8 @@ export function probeDevice(gfxOverride: boolean) {
 }
 
 export function trainExcerpt(root = repoRoot()) {
-  const candidates = ['data/corpus/work/train.bin', 'data/work/train.bin'];
+  const data = datasetPaths(root);
+  const candidates = [`${data.work}/train.bin`, 'data/corpus/work/train.bin', 'data/work/train.bin'];
   for (const rel of candidates) {
     const abs = path.join(root, rel);
     if (!existsSync(abs)) continue;

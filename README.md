@@ -6,7 +6,7 @@ The model is not a general chatbot. It memorizes a short invented harbor (the li
 
 ## Data, then weights
 
-Training reads `data/work/train.bin`, which does not exist until the three data stages have run.
+The lab uses `data/corpus/work/train.bin` when that book stream is present, and `data/work/train.bin` otherwise. A stream does not exist until the three data stages have run.
 
 ```bash
 uv run python -m tinyllm.stages gather --raw data/raw --work data/work
@@ -84,7 +84,7 @@ bun install
 bun run dev
 ```
 
-Open the dev server (port 5173, or another free port). The pages follow the pipeline: notes, gather, clean, prepare, shape, train, finetune, and sample. Training buttons call this repo's virtualenv (`.venv/bin/python`) and poll `runs/<id>/status.json`. The server refuses a second run while one is alive and caps a lab run at 2000 steps. Pretraining from the lab requires `data/work/train.bin` from the prepare stage.
+Open the dev server (port 5173, or another free port). The pages follow the pipeline: notes, gather, clean, prepare, shape, train, finetune, and sample. Training buttons call this repo's virtualenv (`.venv/bin/python`) and poll `runs/<id>/status.json`. The server refuses a second run while one is alive and caps a lab run at 2000 steps. The step box starts at 20. Pretraining uses the book stream when `data/corpus/work/train.bin` is present.
 
 ## Reading a run
 

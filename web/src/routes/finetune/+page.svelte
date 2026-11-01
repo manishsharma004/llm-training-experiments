@@ -74,8 +74,8 @@
 
 <h2>Continue from the pretrained checkpoint</h2>
 <p class="note">Finetune reads <span class="formula" style="display:inline;padding:2px 6px">checkpoints/pretrain.pt</span> and writes <span class="formula" style="display:inline;padding:2px 6px">checkpoints/sft.pt</span>. The learning rate is lower than pretraining so the new format can land without washing out the prose.</p>
-<RunBench phase="finetune" finetuneSteps={80} learningRate={0.001} />
+<RunBench phase="finetune" finetuneSteps={8} learningRate={0.001} />
 
 <h2>Or run the whole pipeline</h2>
 <p class="note">Pretrain, then finetune, into the same checkpoint paths. The chart keeps both phases: pine, then copper. If the learning rate is above 1e-3, the finetune half of the pipeline lowers it to 1e-3. About 200 pretrain steps is where the prose probe starts finishing “copper”; the question probe should stay messy until the finetune half. Finetuning can blur the prose. That tradeoff is the point of comparing the two checkpoints on the sample page.</p>
-<RunBench phase="pipeline" steps={200} finetuneSteps={80} learningRate={0.003} />
+<RunBench phase="pipeline" steps={20} finetuneSteps={8} learningRate={0.003} />

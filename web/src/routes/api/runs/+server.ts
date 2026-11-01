@@ -4,7 +4,10 @@ import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = () => {
   const root = repoRoot();
-  return json({ run: latestRun(root), runs: listRuns(root).slice(0, 8) });
+  const all = listRuns(root).filter((run) => run !== null);
+  const corpus = all.find((run) => run.id === 'corpus');
+  const recent = all.filter((run) => run.id !== 'corpus').slice(0, 8);
+  return json({ run: latestRun(root), runs: corpus ? [...recent, corpus] : recent });
 };
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -21,8 +24,8 @@ export const POST: RequestHandler = async ({ request }) => {
   try {
     const result = startRun({
       phase: body.phase ?? 'pretrain',
-      steps: Number(body.steps ?? 200),
-      finetuneSteps: Number(body.finetuneSteps ?? 80),
+      steps: Number(body.steps ?? 20),
+      finetuneSteps: Number(body.finetuneSteps ?? 8),
       seed: Number(body.seed ?? 7),
       batchSize: Number(body.batchSize ?? 16),
       learningRate: Number(body.learningRate ?? 3e-3),

@@ -3,6 +3,7 @@
   import { page } from '$app/state';
   import { encodeBytes, glyphFor, softmax } from '#lib/bytes.ts';
   import { lab } from '#lib/lab.svelte.ts';
+  import { pickRun } from '#lib/pickRun.ts';
   import type { RunStatus } from '#lib/types.ts';
   import Viewport, { type StageBox, type StagePoint, type StageSegment } from './Viewport.svelte';
 
@@ -105,7 +106,7 @@
         .then((body) => {
           const runs = (body.runs ?? []) as RunStatus[];
           const wanted = path === '/finetune' ? 'finetune' : 'pretrain';
-          run = runs.find((item) => item.phase === wanted) ?? (path === '/train' || path === '/finetune' ? null : runs.find((item) => item.state === 'running') ?? null);
+          run = pickRun(runs, wanted) ?? (path === '/train' || path === '/finetune' ? null : runs.find((item) => item.state === 'running') ?? null);
         })
         .catch(() => undefined);
     };
@@ -435,6 +436,8 @@
   <p class="kicker">Stage</p>
   {#if showLive}
     <div class="live">
+      <div><span>training stream</span><strong>{count(data?.prepare?.train_tokens)}</strong></div>
+      <div><span>validation</span><strong>{count(data?.prepare?.val_tokens)}</strong></div>
       <div><span>tokens trained</span><strong>{count(run?.tokensTrained)}</strong></div>
       <div><span>tokens seen</span><strong>{count(run?.tokensSeen)}</strong></div>
       <div><span>step</span><strong>{run ? `${run.step ?? 0} / ${run.totalSteps ?? '?'}` : '—'}</strong></div>
@@ -451,6 +454,8 @@
     <p class="note">
       {#if run?.state === 'running'}
         These update on every step, while training is still running.
+      {:else if run?.id === 'corpus'}
+        This is the finished pass over the book stream, {run.step?.toLocaleString()} steps. A new pretrain starts at 20 steps and writes checkpoints/pretrain.pt, leaving checkpoints/corpus.pt in place.
       {:else if run}
         Last {run.phase} run. {run.state}.
       {:else}

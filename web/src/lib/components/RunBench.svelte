@@ -2,12 +2,13 @@
   import { untrack } from 'svelte';
   import { browser } from '$app/env';
   import LossChart from './LossChart.svelte';
+  import { pickRun } from '#lib/pickRun.ts';
   import type { RunStatus } from '#lib/types.ts';
 
   let {
     phase,
-    steps = 200,
-    finetuneSteps = 80,
+    steps = 20,
+    finetuneSteps = 8,
     learningRate = 0.003
   }: {
     phase: 'pretrain' | 'finetune' | 'pipeline';
@@ -101,7 +102,7 @@
       .then((response) => response.json())
       .then((body) => {
         const runs = (body.runs ?? []) as RunStatus[];
-        const match = runs.find((candidate) => candidate.phase === phase);
+        const match = pickRun(runs, phase);
         if (!match?.id) return;
         run = match;
         if (match.state === 'running') refresh(match.id);

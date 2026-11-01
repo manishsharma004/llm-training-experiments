@@ -18,4 +18,4 @@
 </section>
 
 <h2>Run it</h2>
-<RunBench phase="pretrain" steps={200} learningRate={0.003} />
+<RunBench phase="pretrain" steps={20} learningRate={0.003} />

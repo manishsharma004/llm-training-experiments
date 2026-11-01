@@ -41,9 +41,9 @@
 
 {#if report}
   <div class="stats" style="margin-top:16px">
-    <div class="stat"><span class="note">train bytes</span><strong>{report.train_tokens}</strong></div>
-    <div class="stat"><span class="note">validation bytes</span><strong>{report.val_tokens}</strong></div>
-    <div class="stat"><span class="note">windows</span><strong>{report.train_windows}</strong></div>
+    <div class="stat"><span class="note">train bytes</span><strong>{Number(report.train_tokens).toLocaleString()}</strong></div>
+    <div class="stat"><span class="note">validation bytes</span><strong>{Number(report.val_tokens).toLocaleString()}</strong></div>
+    <div class="stat"><span class="note">windows</span><strong>{Number(report.train_windows).toLocaleString()}</strong></div>
     <div class="stat"><span class="note">question pairs</span><strong>{report.sft_pairs}</strong></div>
   </div>
   <section class="card">

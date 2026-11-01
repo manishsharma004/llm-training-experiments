@@ -33,7 +33,7 @@
   Auto uses a GPU when this PyTorch process can see one, and the CPU otherwise. Choosing GPU on a machine
   where the RX 5500 is not visible stops the run and explains why, instead of silently training on the CPU.
   The preset stays in fp32: weights, gradients, and AdamW states are about 16MB, which fits in 4GB with room to spare.
-  Token totals, power, energy, memory, and temperature stay on the stage while the run is going, not only after it finishes.
+  The stage shows the book stream, the 23 million training bytes, and the finished pass over that stream. The step box starts at 20 so a new run stays short.
 </p>
 
 {#if probeError}<p class="warn">{probeError}</p>{/if}
@@ -82,4 +82,4 @@
 
 <h2>Run</h2>
 <p class="note">Compatibility mode, on the bench below, sets HSA_OVERRIDE_GFX_VERSION=10.3.0 only for that process. Use it when the RX 5500 is in the machine and a ROCm wheel that contains gfx1030 kernels still cannot see gfx1012. A native gfx1012 wheel does not need it.</p>
-<RunBench phase="pretrain" steps={200} learningRate={0.003} />
+<RunBench phase="pretrain" steps={20} learningRate={0.003} />
