@@ -21,6 +21,7 @@ from tinyllm.data import encode_corpus, finetune_batch, pretrain_batch
 from tinyllm.device import resolve
 from tinyllm.model import TinyLM
 from tinyllm.schedule import learning_rate
+from tinyllm.sensors import GpuMeter
 from tinyllm.status import read_status, write_status
 from tinyllm.tokenizer import decode, encode
 
@@ -106,6 +107,21 @@ def _run(
     metrics: list[dict] = []
     last_loss = float(init_loss) if init_loss is not None else math.nan
     probes: list[dict[str, str]] = []
+    meter = GpuMeter.open()
+    if device.type == "cuda":
+        torch.cuda.reset_peak_memory_stats(device)
+
+    def compute_report() -> dict | None:
+        allocated = peak = None
+        if device.type == "cuda":
+            allocated = int(torch.cuda.memory_allocated(device))
+            peak = int(torch.cuda.max_memory_allocated(device))
+        if meter is None:
+            return None
+        meter.sample(process_vram_bytes=allocated, process_vram_peak_bytes=peak)
+        return meter.summary()
+
+    compute = compute_report()
 
     for step in range(1, train_config.steps + 1):
         lr = learning_rate(
@@ -157,6 +173,7 @@ def _run(
             metrics.append(record)
         if step == 1 or step == train_config.steps or step % train_config.sample_every == 0:
             probes = _probe(model, PROBES, device)
+        compute = compute_report()
 
         if status_path is not None:
             write_status(
@@ -179,6 +196,7 @@ def _run(
                     "tokensPerSec": round(tokens_per_sec, 1),
                     "dataSource": data_source,
                     "valLoss": val_loss,
+                    "compute": compute,
                 },
             )
 
@@ -199,6 +217,7 @@ def _run(
         "precision": "fp32",
         "dataSource": data_source,
         "valLoss": val_loss,
+        "compute": compute,
     }
     if status_path is not None:
         write_status(status_path, summary)
